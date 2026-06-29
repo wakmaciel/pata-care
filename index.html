@@ -134,9 +134,9 @@ input, select, textarea{ font-family: inherit; }
 .topbar .brand .logo-dot{
   width: 30px; height:30px; border-radius: 50%; background: var(--pink);
   display:flex; align-items:center; justify-content:center; box-shadow: var(--shadow-sm);
-  flex-shrink: 0;
+  flex-shrink: 0; overflow:hidden;
 }
-.topbar .brand .logo-dot svg{ width:18px; height:18px; fill:#fff; }
+.topbar .brand .logo-dot img{ width:100%; height:100%; object-fit:cover; display:block; }
 .topbar h1{ font-size: 20px; color: var(--text); }
 .topbar-actions{ display:flex; align-items:center; gap:6px; }
 .icon-btn{
@@ -328,6 +328,7 @@ canvas#weightChart{ width:100%; height: 140px; display:block; }
 @keyframes fadein2{ from{opacity:0;} to{opacity:1;} }
 .sheet{
   background: var(--bg); width:100%; max-width: 560px; max-height: 92vh; overflow-y:auto;
+  -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
   border-radius: 26px 26px 0 0; padding: 10px 20px calc(26px + var(--safe-bottom));
   box-shadow: var(--shadow-lg); animation: slideup .22s cubic-bezier(.2,.8,.3,1);
 }
@@ -338,9 +339,14 @@ canvas#weightChart{ width:100%; height: 140px; display:block; }
 
 .field{ margin-bottom: 14px; }
 .field label{ display:block; font-size: 13px; font-weight:700; color: var(--text-muted); margin-bottom:6px; }
-.field input[type=text], .field input[type=number], .field input[type=date], .field input[type=time], .field select, .field textarea{
+.field input[type=text], .field input[type=number], .field input[type=date], .field input[type=time], .field input[type=datetime-local], .field select, .field textarea{
   width:100%; padding: 12px 14px; border-radius: var(--radius-sm); border:1.5px solid var(--border);
-  background: var(--surface); color: var(--text); font-size:15px; outline:none;
+  background: var(--surface); color: var(--text); font-size:16px; outline:none;
+}
+.field select{
+  -webkit-appearance:none; appearance:none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238C6677' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>");
+  background-repeat: no-repeat; background-position: right 12px center; background-size: 18px; padding-right: 38px;
 }
 .field input:focus, .field select:focus, .field textarea:focus{ border-color: var(--pink); }
 .field textarea{ resize: vertical; min-height: 64px; }
@@ -402,6 +408,23 @@ canvas#weightChart{ width:100%; height: 140px; display:block; }
 .heat-banner svg{ width:26px; height:26px; stroke: var(--pink-strong); fill:none; flex-shrink:0; }
 .heat-banner .t{ font-size: 13.5px; font-weight:700; color: var(--pink-strong); }
 .heat-banner .s{ font-size:12px; color: var(--text-muted); margin-top:1px; }
+
+/* Previsão de vacinas (linha do tempo) */
+.vf-head{ display:flex; align-items:center; gap:8px; margin-bottom:16px; }
+.vf-head .vf-icon{ display:flex; flex-shrink:0; }
+.vf-head .vf-icon svg{ width:18px; height:18px; stroke: var(--pink-strong); fill:none; }
+.vf-head h4{ font-size:14.5px; flex:1; min-width:0; }
+.vf-toggle{ border:none; background: var(--surface-2); color: var(--pink-strong); font-size:11px; font-weight:700; padding:6px 10px; border-radius: var(--radius-pill); display:flex; align-items:center; gap:4px; cursor:pointer; white-space:nowrap; flex-shrink:0; }
+.vf-toggle svg{ width:11px; height:11px; stroke:currentColor; fill:none; flex-shrink:0; }
+.vaccine-forecast.is-off{ opacity:.55; }
+.vaccine-forecast.is-off .vf-toggle{ background: var(--mint-soft); color: var(--mint); }
+.vf-row{ display:flex; }
+.vf-col{ flex:1; display:flex; flex-direction:column; align-items:center; min-width:0; padding:0 2px; }
+.vf-date{ font-size:10.5px; color: var(--text-muted); font-weight:700; margin-bottom:9px; white-space:nowrap; }
+.vf-line{ display:flex; align-items:center; width:100%; }
+.vf-seg{ flex:1; height:2px; }
+.vf-dot{ width:13px; height:13px; border-radius:50%; flex-shrink:0; box-shadow:0 0 0 3px var(--surface); }
+.vf-label{ font-size:11px; color: var(--text); font-weight:700; margin-top:9px; text-align:center; }
 
 .lightbox{ position:fixed; inset:0; background:rgba(0,0,0,.85); z-index:300; display:flex; align-items:center; justify-content:center; padding:20px; }
 .lightbox img{ max-width:100%; max-height:100%; border-radius: var(--radius-md); }

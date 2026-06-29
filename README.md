@@ -1,26 +1,29 @@
 # 🐾 PataCare — Caderneta digital do seu pet
 
-Um app web (PWA) para gerenciar a saúde e os cuidados dos seus pets: vacinas, antipulgas/carrapatos, vermífugos, peso e cio — com fotos, lembretes e backup. Funciona direto no navegador, pode ser "instalado" na tela de início do iPhone, e **todos os dados ficam salvos apenas no seu dispositivo** (não tem servidor, não tem login, não tem nuvem).
+Um app web (PWA) para gerenciar a saúde e os cuidados dos seus pets: vacinas (com previsão automática conforme protocolos veterinários brasileiros), medicamentos com horário certo, antipulgas/carrapatos, vermífugos, peso e cio — com fotos, lembretes, relatório para o veterinário e backup. Funciona direto no navegador, pode ser "instalado" na tela de início do iPhone, e **todos os dados ficam salvos apenas no seu dispositivo** (não tem servidor, não tem login, não tem nuvem).
 
-## ✨ Funcionalidades da v1.0
+## ✨ Funcionalidades
 
 - **Múltiplos pets**, cada um com nome, foto, espécie, raça, sexo e data de nascimento (com cálculo automático de idade).
-- **Vacinas**: nome, data, horário, foto da etiqueta e data da próxima dose, com aviso visual de atrasado/próximo.
-- **Antipulgas e carrapatos**: produto aplicado, data e próxima aplicação.
-- **Vermífugos**: produto aplicado, data e próxima aplicação.
+- **Vacinas com previsão automática**: escolha o tipo (V8/V10, Antirrábica, Giárdia, Gripe canina, Leishmaniose, V3/V4/V5 felina, FeLV, ou personalizada) e o app já calcula a próxima dose sozinho, seguindo os esquemas de filhote (várias doses iniciais) e depois reforço anual — com uma linha do tempo visual por vacina, que pode ser desabilitada se não fizer sentido para o seu pet.
+- **Medicamentos**: registre nome, forma (comprimido, gota, líquido, injeção...), dose, de quantas em quantas horas e por quantos dias — o app monta a lista de doses automaticamente e você vai marcando "✓ aplicada" uma a uma, com contagem de progresso.
+- **Antipulgas e carrapatos** e **vermífugos**: produto aplicado, data e próxima aplicação.
 - **Peso**: histórico com gráfico de evolução e variação em relação ao registro anterior.
 - **Cio** (apenas para pets fêmeas): início, fim e intervalo médio entre os ciclos.
-- **Lembretes**: uma tela só com tudo que está atrasado ou vencendo nos próximos dias, de todos os pets.
+- **Lembretes**: uma tela só com tudo que está atrasado ou vencendo (vacinas, antipulgas, vermífugos e doses de medicamento) de todos os pets — pode marcar a dose do remédio direto por ali.
+- **Relatório para o veterinário**: gera um PDF (via impressão do navegador) com o resumo completo de um pet ou de todos, pronto para mostrar ou enviar na consulta.
 - **Modo claro / escuro / automático** (segue o sistema do iOS).
 - **Backup**: exporta tudo em um arquivo `.json` para guardar ou transferir para outro aparelho, e importa quando quiser restaurar.
 - **Instalável no iPhone** (PWA): adiciona à tela de início e funciona offline depois do primeiro carregamento.
+
+> ⚠️ As previsões de vacina seguem protocolos veterinários gerais usados no Brasil (baseados em referências como Zoetis, Petz, Pedigree, Cobasi, Covet) mas **não substituem a avaliação de um médico-veterinário**, que pode ajustar o esquema conforme raça, risco e histórico do pet.
 
 ## 📂 Estrutura do projeto
 
 ```
 patacare-app/
 ├── index.html      → toda a interface (HTML + CSS) do app
-├── app.js          → toda a lógica (telas, banco de dados local, formulários)
+├── app.js          → toda a lógica (telas, banco de dados local, formulários, protocolos de vacina)
 ├── manifest.json    → configuração do PWA (nome, ícone, cores)
 ├── sw.js            → service worker (cache offline)
 ├── icons/           → ícones do app para a tela de início
@@ -46,6 +49,13 @@ Não tem build, não tem `npm install`, não tem dependências para instalar. É
 3. Toque em **Adicionar à Tela de Início**.
 4. Pronto — o PataCare aparece como um app normal, com ícone próprio, sem a barra de endereço do navegador.
 
+## 🩺 Como gerar o relatório para o veterinário
+
+1. Vá em **Ajustes → Exportar para o veterinário**.
+2. Escolha um pet específico ou "Todos os pets".
+3. Toque em **Gerar relatório** — ele abre em uma nova aba.
+4. Toque em **Imprimir / Salvar PDF** no topo da página e, no iPhone, escolha "Salvar em Arquivos" ou compartilhe direto pelo menu de impressão (toque na prévia com dois dedos para abrir as opções de compartilhar como PDF).
+
 ## 💾 Sobre os dados e backup
 
 - Os dados ficam guardados no **IndexedDB do navegador**, ou seja, dentro do próprio iPhone/navegador onde você usa o app.
@@ -58,15 +68,16 @@ Não tem build, não tem `npm install`, não tem dependências para instalar. É
 O código é organizado para ser fácil de ajustar:
 
 - **Cores e visual**: tudo está nas variáveis CSS no topo do `index.html` (`:root` para modo claro, `html[data-theme="dark"]` para o escuro).
-- **Campos dos formulários** (vacina, antipulgas, vermífugo, peso, cio): estão no objeto `RECORD_FORMS` dentro do `app.js` — para adicionar um campo novo, basta acrescentar um item na lista de `fields`.
+- **Protocolos de vacina**: estão no objeto `VACCINE_PROTOCOLS` no `app.js` — para ajustar intervalos ou adicionar um novo tipo de vacina, basta editar esse objeto.
+- **Campos dos formulários** (antipulgas, vermífugo, peso, cio): estão no objeto `RECORD_FORMS` dentro do `app.js`.
 - **Ícones**: são todos SVGs simples, no objeto `ICONS` no topo do `app.js`.
 
 Ideias para próximas versões (é só pedir e a gente constrói junto):
 - Notificações push reais (hoje a tela de Lembretes já avisa, mas só quando você abre o app).
 - Gráfico de peso comparando várias fases (filhote/adulto).
-- Compartilhar a carteirinha de vacinação em PDF.
 - Suporte a mais de um cuidador (ex: backup automático na nuvem).
 
 ---
 
 Feito com carinho para cuidar de quem cuida da gente. 🐾
+

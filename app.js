@@ -73,12 +73,18 @@
   function escapeHtml(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   }
-  function calcAge(birthISO) {
-    if (!birthISO) return "";
+  function ageMonths(birthISO) {
+    if (!birthISO) return null;
     const b = parseISODate(birthISO), now = new Date();
     let months = (now.getFullYear() - b.getFullYear()) * 12 + (now.getMonth() - b.getMonth());
     if (now.getDate() < b.getDate()) months--;
-    if (months < 0) return "";
+    return months < 0 ? null : months;
+  }
+  function calcAge(birthISO) {
+    if (!birthISO) return "";
+    const b = parseISODate(birthISO), now = new Date();
+    const months = ageMonths(birthISO);
+    if (months === null) return "";
     if (months < 1) {
       const days = Math.max(0, Math.round((now - b) / 86400000));
       return days <= 1 ? "Recém-nascido" : days + " dias";
@@ -416,9 +422,11 @@
     if (route.view === "home") action = () => openPetForm(null);
     else if (route.view === "pet") {
       const tab = route.tab || "overview";
+      const pet = getPet(route.petId);
       if (tab === "vaccine") action = () => openVaccineForm(route.petId, null);
       else if (tab === "medication") action = () => openMedicationForm(route.petId, null);
-      else if (["antiparasitic", "dewormer", "weight", "heat"].includes(tab)) action = () => openRecordForm(tab, route.petId, null);
+      else if (tab === "heat") { if (!pet || !pet.neutered) action = () => openRecordForm("heat", route.petId, null); }
+      else if (["antiparasitic", "dewormer", "weight"].includes(tab)) action = () => openRecordForm(tab, route.petId, null);
     }
     if (!action) return;
     const fab = document.createElement("button");
@@ -550,6 +558,10 @@
         <div class="ic">${pet.species === "cat" ? ICONS.cat : ICONS.dog}</div>
         <div class="lbl"><div class="t">Espécie e raça</div><div class="s">${(pet.species === "cat" ? "Gato" : pet.species === "dog" ? "Cão" : "Outro")} · ${escapeHtml(pet.breed || "—")}</div></div>
       </div>
+      <div class="settings-row">
+        <div class="ic">${ICONS.heart}</div>
+        <div class="lbl"><div class="t">Castrado(a)</div><div class="s">${pet.neutered ? "Sim" : "Não"}</div></div>
+      </div>
       ${pet.notes ? `<div class="settings-row"><div class="ic">${ICONS.info}</div><div class="lbl"><div class="t">Observações</div><div class="s">${escapeHtml(pet.notes)}</div></div></div>` : ""}`;
     content.appendChild(infoCard);
 
@@ -581,7 +593,7 @@
     }
     summary.appendChild(row("syringe", "Vacinas", vac, "vaccine", `#/pet/${pet.id}/vaccine`));
     const meds = STATE.records.filter((r) => r.petId === pet.id && r.category === "medication");
-    const medActive = meds.filter((m) => m.doses.some((d) => !d.done));
+    const medActive = meds.filter((m) => m.doses.some(isDosePending));
     const medRow = document.createElement("div");
     medRow.className = "settings-row"; medRow.style.cursor = "pointer";
     let medStatus = `<span class="s">${meds.length} registrado${meds.length === 1 ? "" : "s"}</span>`;
@@ -598,6 +610,91 @@
     summary.appendChild(wr);
     content.appendChild(summary);
   }
+
+  /* ----------------------- Faixa de peso ideal por raça (referência geral) ------------------------
+     Faixas aproximadas de peso adulto, baseadas em padrões usuais de raça. Servem só como
+     referência — avaliação de peso real depende de exame físico (escore de condição corporal)
+     feito por um médico-veterinário. Não se aplica a filhotes nem a SRD/vira-lata (porte variável). */
+  const BREED_WEIGHT_TABLE = [
+    { keys: ["chihuahua"], min: 1.5, max: 3 },
+    { keys: ["yorkshire"], min: 2, max: 3.5 },
+    { keys: ["maltes", "maltês"], min: 2, max: 4 },
+    { keys: ["pomerania", "lulu da pomerania", "spitz alemao", "spitz alemão"], min: 1.5, max: 3.5 },
+    { keys: ["pinscher mini", "pinscher miniatura"], min: 3, max: 6 },
+    { keys: ["pinscher"], min: 3, max: 6 },
+    { keys: ["poodle toy", "poodle micro"], min: 2, max: 4 },
+    { keys: ["poodle mini", "poodle miniatura"], min: 5, max: 8 },
+    { keys: ["poodle standard", "poodle grande", "poodle gigante"], min: 20, max: 31 },
+    { keys: ["poodle"], min: 5, max: 8 },
+    { keys: ["shih tzu"], min: 4, max: 8 },
+    { keys: ["lhasa apso"], min: 5, max: 8 },
+    { keys: ["bichon"], min: 3, max: 6 },
+    { keys: ["jack russell"], min: 5, max: 8 },
+    { keys: ["cavalier"], min: 5, max: 8 },
+    { keys: ["dachshund mini", "salsicha mini", "teckel mini"], min: 3, max: 5 },
+    { keys: ["dachshund", "salsicha", "teckel"], min: 7, max: 12 },
+    { keys: ["schnauzer mini", "schnauzer miniatura"], min: 4, max: 8 },
+    { keys: ["schnauzer gigante"], min: 25, max: 35 },
+    { keys: ["schnauzer"], min: 13, max: 20 },
+    { keys: ["bulldog frances", "bulldog francês"], min: 8, max: 14 },
+    { keys: ["pug"], min: 6, max: 10 },
+    { keys: ["beagle"], min: 9, max: 15 },
+    { keys: ["cocker"], min: 11, max: 16 },
+    { keys: ["border collie"], min: 12, max: 20 },
+    { keys: ["whippet"], min: 7, max: 14 },
+    { keys: ["basset"], min: 18, max: 29 },
+    { keys: ["shar pei"], min: 18, max: 30 },
+    { keys: ["spitz japones", "spitz japonês"], min: 5, max: 10 },
+    { keys: ["bulldog ingles", "bulldog inglês"], min: 18, max: 29 },
+    { keys: ["labrador"], min: 25, max: 36 },
+    { keys: ["golden"], min: 25, max: 34 },
+    { keys: ["husky"], min: 16, max: 27 },
+    { keys: ["pastor alemao", "pastor alemão"], min: 22, max: 40 },
+    { keys: ["rottweiler"], min: 35, max: 60 },
+    { keys: ["doberman"], min: 27, max: 45 },
+    { keys: ["boxer"], min: 24, max: 32 },
+    { keys: ["collie"], min: 18, max: 34 },
+    { keys: ["setter"], min: 20, max: 32 },
+    { keys: ["pointer"], min: 20, max: 34 },
+    { keys: ["dalmata", "dálmata"], min: 16, max: 32 },
+    { keys: ["akita"], min: 30, max: 45 },
+    { keys: ["chow chow"], min: 20, max: 32 },
+    { keys: ["weimaraner"], min: 25, max: 40 },
+    { keys: ["pit bull"], min: 14, max: 27 },
+    { keys: ["bernese"], min: 35, max: 55 },
+    { keys: ["fila brasileiro", "fila"], min: 40, max: 55 },
+    { keys: ["mastim", "dogue alemao", "dogue alemão", "great dane"], min: 45, max: 90 },
+    { keys: ["sao bernardo", "são bernardo"], min: 55, max: 90 },
+    { keys: ["maine coon"], min: 5, max: 11, species: "cat" },
+    { keys: ["ragdoll"], min: 4.5, max: 9, species: "cat" },
+    { keys: ["persa"], min: 3, max: 5.5, species: "cat" },
+    { keys: ["siames", "siamês"], min: 3, max: 5, species: "cat" },
+    { keys: ["sphynx"], min: 3, max: 5.5, species: "cat" },
+    { keys: ["british shorthair", "british"], min: 4, max: 8, species: "cat" },
+    { keys: ["bengal"], min: 4, max: 7, species: "cat" },
+    { keys: ["noruegues", "norueguês", "norwegian"], min: 4.5, max: 9, species: "cat" },
+    { keys: ["angora"], min: 2.5, max: 5, species: "cat" }
+  ];
+  function normalizeBreedText(s) {
+    return (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+  }
+  function findBreedWeightRange(pet) {
+    const text = normalizeBreedText(pet.breed);
+    if (!text || /srd|sem raca|vira ?lata|mestic|indefinid/.test(text)) {
+      if (pet.species === "cat") return { min: 3, max: 5.5, isGenericCat: true };
+      return null;
+    }
+    for (const entry of BREED_WEIGHT_TABLE) {
+      if (entry.species && entry.species !== pet.species) continue;
+      if (!entry.species && pet.species === "cat") continue; // entradas de cão não valem para gato
+      if (entry.keys.some((k) => text.includes(k))) return entry;
+    }
+    if (pet.species === "cat") return { min: 3, max: 5.5, isGenericCat: true };
+    return null;
+  }
+  // Considera-se "adulto" para fins de comparação de peso a partir desta idade (meses);
+  // racas pequenas maturam mais rápido, mas usamos um corte conservador único para o v1.
+  const ADULT_MIN_MONTHS = 12;
 
   /* ----------------------- Protocolos de vacinação (Brasil) ------------------------
      Intervalos baseados em referências veterinárias usuais no Brasil (Zoetis, Petz,
@@ -653,10 +750,22 @@
     const start = new Date(startDateTimeISO);
     for (let i = 0; i < totalDoses; i++) {
       const t = new Date(start.getTime() + i * frequencyHours * 3600000);
-      doses.push({ scheduledAt: t.toISOString(), done: false, doneAt: null });
+      doses.push({ scheduledAt: t.toISOString(), status: "pending", doneAt: null });
     }
     return doses;
   }
+  // "pending" | "done" | "missed" — d.done é mantido apenas para compatibilidade com dados antigos
+  function doseStatus(d) { return d.status || (d.done ? "done" : "pending"); }
+  function isDosePending(d) { return doseStatus(d) === "pending"; }
+  function isDoseDone(d) { return doseStatus(d) === "done"; }
+  function isDoseMissed(d) { return doseStatus(d) === "missed"; }
+  function setDoseStatus(d, status) {
+    d.status = status;
+    d.done = status === "done"; // compatibilidade
+    d.doneAt = status === "done" ? new Date().toISOString() : null;
+  }
+  function hoursLate(dose) { return (Date.now() - new Date(dose.scheduledAt).getTime()) / 3600000; }
+  function isPendingExpired(dose, frequencyHours) { return isDosePending(dose) && hoursLate(dose) > frequencyHours; }
   function fmtDateTime(iso) {
     if (!iso) return "—";
     const d = new Date(iso);
@@ -971,6 +1080,9 @@
     content.appendChild(chartWrap);
     requestAnimationFrame(() => drawWeightChart(chartWrap.querySelector("#weightChart"), asc));
 
+    const assessment = renderWeightAssessmentCard(pet, latest.weight);
+    if (assessment) content.appendChild(assessment);
+
     const title = document.createElement("div");
     title.className = "section-title";
     title.textContent = "Histórico";
@@ -993,6 +1105,64 @@
       div.querySelector(".record-body").addEventListener("click", openEdit);
       content.appendChild(div);
     });
+  }
+
+  function renderWeightAssessmentCard(pet, currentWeight) {
+    const div = document.createElement("div");
+    div.className = "card weight-assessment";
+    div.style.marginBottom = "16px";
+
+    if (!pet.birthDate) {
+      div.innerHTML = `
+        <div style="display:flex;gap:10px;align-items:flex-start">
+          <span style="display:flex;flex-shrink:0;color:var(--text-faint)">${ICONS.info}</span>
+          <p style="font-size:12.5px;color:var(--text-muted);line-height:1.5">Informe a <strong>data de nascimento</strong> e a <strong>raça</strong> do pet (em "Editar pet") para ver aqui se o peso está dentro da faixa esperada.</p>
+        </div>`;
+      return div;
+    }
+    const months = ageMonths(pet.birthDate);
+    if (months !== null && months < ADULT_MIN_MONTHS) {
+      div.innerHTML = `
+        <div style="display:flex;gap:10px;align-items:flex-start">
+          <span style="display:flex;flex-shrink:0;color:var(--peach)">${ICONS.info}</span>
+          <p style="font-size:12.5px;color:var(--text-muted);line-height:1.5"><strong style="color:var(--text)">Fase de crescimento</strong> — com ${calcAge(pet.birthDate)}, ainda não dá pra comparar com o peso ideal de um adulto. Continue acompanhando a curva de peso; o ganho deve ser gradual e constante.</p>
+        </div>`;
+      return div;
+    }
+    const range = findBreedWeightRange(pet);
+    if (!range) {
+      div.innerHTML = `
+        <div style="display:flex;gap:10px;align-items:flex-start">
+          <span style="display:flex;flex-shrink:0;color:var(--text-faint)">${ICONS.info}</span>
+          <p style="font-size:12.5px;color:var(--text-muted);line-height:1.5">Não temos uma faixa de referência para "${escapeHtml(pet.breed || "essa raça")}" (comum em pets sem raça definida, já que o porte varia muito). Para avaliar o peso, o ideal é o médico-veterinário fazer o escore de condição corporal (palpação de costelas e cintura).</p>
+        </div>`;
+      return div;
+    }
+
+    const { min, max } = range;
+    let status, color, bg;
+    if (currentWeight < min) { status = "Abaixo da faixa esperada para a raça"; color = "var(--peach)"; bg = "var(--peach-soft)"; }
+    else if (currentWeight > max) { status = "Acima da faixa esperada para a raça"; color = "var(--red)"; bg = "var(--red-soft)"; }
+    else { status = "Dentro da faixa esperada para a raça"; color = "var(--mint)"; bg = "var(--mint-soft)"; }
+
+    const dMin = min * 0.6, dMax = max * 1.4;
+    const pos = (v) => Math.max(0, Math.min(100, ((v - dMin) / (dMax - dMin)) * 100));
+    const zoneLeft = pos(min), zoneRight = pos(max);
+    const markerPos = pos(currentWeight);
+
+    div.innerHTML = `
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+        <span style="font-size:13px;font-weight:700;padding:4px 10px;border-radius:var(--radius-pill);background:${bg};color:${color}">${status}</span>
+      </div>
+      <div class="weight-gauge">
+        <div class="weight-gauge-track">
+          <div class="weight-gauge-zone" style="left:${zoneLeft}%;width:${zoneRight - zoneLeft}%"></div>
+          <div class="weight-gauge-marker" style="left:${markerPos}%;background:${color}"></div>
+        </div>
+        <div class="weight-gauge-labels"><span>${min} kg</span><span>${max} kg</span></div>
+      </div>
+      <p style="font-size:11.5px;color:var(--text-faint);line-height:1.4;margin-top:10px">Faixa de referência geral para a raça em adultos. Não substitui o escore de condição corporal avaliado por um médico-veterinário.</p>`;
+    return div;
   }
 
   function drawWeightChart(canvas, points) {
@@ -1051,6 +1221,16 @@
 
   function renderHeatTab(content, pet) {
     const list = recordsFor(pet.id, "heat"); // desc by startDate
+    const readOnly = !!pet.neutered;
+
+    if (readOnly) {
+      const banner = document.createElement("div");
+      banner.className = "heat-banner";
+      banner.style.background = "linear-gradient(135deg, var(--mint-soft), var(--mint-soft))";
+      banner.innerHTML = `${ICONS.check}<div><div class="t" style="color:var(--mint)">Pet castrada</div><div class="s">Não são esperados novos ciclos de cio. O histórico abaixo é só para consulta.</div></div>`;
+      content.appendChild(banner);
+    }
+
     if (list.length > 0) {
       const last = list[0];
       const sinceDays = daysBetween(last.startDate, todayISO());
@@ -1064,19 +1244,35 @@
         }, 0) / (Math.min(list.length, 4) - 1));
         intervalTxt = ` · intervalo médio de ${avg} dias`;
       }
-      banner.innerHTML = `${ICONS.heart}<div><div class="t">${sinceDays} dia${sinceDays === 1 ? "" : "s"} desde o último início</div><div class="s">Último cio em ${fmtDate(last.startDate)}${intervalTxt}</div></div>`;
-      content.appendChild(banner);
+      if (!readOnly) {
+        banner.innerHTML = `${ICONS.heart}<div><div class="t">${sinceDays} dia${sinceDays === 1 ? "" : "s"} desde o último início</div><div class="s">Último cio em ${fmtDate(last.startDate)}${intervalTxt}</div></div>`;
+        content.appendChild(banner);
+      }
     }
     if (list.length === 0) {
-      content.innerHTML = `
-        <div class="empty-state">
+      const empty = document.createElement("div");
+      empty.className = "empty-state";
+      if (readOnly) {
+        empty.innerHTML = `
+          <div class="paw-stack">${ICONS.check.replace("<svg", '<svg style="width:42px;height:42px;stroke:var(--mint);fill:none"')}</div>
+          <h3>Nenhum ciclo registrado</h3>
+          <p>Este pet está marcado como castrado — não há histórico de cio para mostrar.</p>`;
+      } else {
+        empty.innerHTML = `
           <div class="paw-stack">${ICONS.heart.replace("<svg", '<svg style="width:42px;height:42px;stroke:var(--pink-soft);fill:none"')}</div>
           <h3>Nenhum ciclo registrado</h3>
           <p>Registre as datas de cio para acompanhar o ciclo da sua pet.</p>
-          <button class="btn btn-primary" id="btn-add-rec">${ICONS.plus} Registrar cio</button>
-        </div>`;
-      content.querySelector("#btn-add-rec").addEventListener("click", () => openRecordForm("heat", pet.id, null));
+          <button class="btn btn-primary" id="btn-add-rec">${ICONS.plus} Registrar cio</button>`;
+      }
+      content.appendChild(empty);
+      if (!readOnly) empty.querySelector("#btn-add-rec").addEventListener("click", () => openRecordForm("heat", pet.id, null));
       return;
+    }
+    if (readOnly) {
+      const title = document.createElement("div");
+      title.className = "section-title";
+      title.textContent = "Histórico (somente visualização)";
+      content.appendChild(title);
     }
     list.forEach((rec) => {
       const div = document.createElement("div");
@@ -1090,10 +1286,12 @@
           <div class="sub">${rec.endDate ? "Fim em " + fmtDate(rec.endDate) + (dur ? " · " + dur + " dias" : "") : "Em andamento"}</div>
           ${rec.notes ? `<div class="sub">${escapeHtml(rec.notes)}</div>` : ""}
         </div>
-        <button class="record-menu-btn" aria-label="Editar">${ICONS.dots}</button>`;
-      const openEdit = () => openRecordForm("heat", pet.id, rec);
-      div.querySelector(".record-menu-btn").addEventListener("click", openEdit);
-      div.querySelector(".record-body").addEventListener("click", openEdit);
+        ${readOnly ? "" : `<button class="record-menu-btn" aria-label="Editar">${ICONS.dots}</button>`}`;
+      if (!readOnly) {
+        const openEdit = () => openRecordForm("heat", pet.id, rec);
+        div.querySelector(".record-menu-btn").addEventListener("click", openEdit);
+        div.querySelector(".record-body").addEventListener("click", openEdit);
+      }
       content.appendChild(div);
     });
   }
@@ -1112,8 +1310,8 @@
       content.querySelector("#btn-add-med").addEventListener("click", () => openMedicationForm(pet.id, null));
       return;
     }
-    const active = meds.filter((m) => m.doses.some((d) => !d.done));
-    const done = meds.filter((m) => !m.doses.some((d) => !d.done));
+    const active = meds.filter((m) => m.doses.some(isDosePending));
+    const done = meds.filter((m) => !m.doses.some(isDosePending));
     if (active.length > 0) {
       const t = document.createElement("div"); t.className = "section-title"; t.textContent = "Em andamento"; content.appendChild(t);
       active.forEach((m) => content.appendChild(renderMedicationCard(m, pet)));
@@ -1125,9 +1323,10 @@
   }
 
   function renderMedicationCard(med, pet) {
-    const doneCount = med.doses.filter((d) => d.done).length;
+    const doneCount = med.doses.filter(isDoseDone).length;
+    const missedCount = med.doses.filter(isDoseMissed).length;
     const total = med.doses.length;
-    const next = med.doses.find((d) => !d.done);
+    const next = med.doses.find(isDosePending);
     const unit = med.doseUnit || MED_FORM_UNITS[med.form] || "dose(s)";
     const pct = Math.round((doneCount / total) * 100);
     const div = document.createElement("div");
@@ -1135,17 +1334,21 @@
     const startD = new Date(med.startDateTime);
     let nextHtml = "";
     if (next) {
+      const expired = isPendingExpired(next, med.frequencyHours);
       const overdue = new Date(next.scheduledAt) < new Date();
-      nextHtml = `<hr class="record-divider"><div class="record-next" style="color:${overdue ? "var(--red)" : "var(--pink-strong)"}">${ICONS.clock} ${overdue ? "Atrasada — " : "Próxima dose: "}${fmtDateTime(next.scheduledAt)}</div>`;
+      const color = expired ? "var(--red)" : overdue ? "var(--peach)" : "var(--pink-strong)";
+      const txt = expired ? "Pendente, provavelmente não aplicada — " : overdue ? "Atrasada — " : "Próxima dose: ";
+      nextHtml = `<hr class="record-divider"><div class="record-next" style="color:${color}">${ICONS.clock} ${txt}${fmtDateTime(next.scheduledAt)}</div>`;
     } else {
-      nextHtml = `<hr class="record-divider"><div class="record-next" style="color:var(--mint)">${ICONS.check} Tratamento concluído</div>`;
+      const extra = missedCount > 0 ? ` (${missedCount} não aplicada${missedCount === 1 ? "" : "s"})` : "";
+      nextHtml = `<hr class="record-divider"><div class="record-next" style="color:var(--mint)">${ICONS.check} Tratamento concluído${extra}</div>`;
     }
     div.innerHTML = `
       <div class="record-stamp"><span class="d">${pad(startD.getDate())}</span><span class="m">${MONTHS_ABBR[startD.getMonth()]}</span></div>
       <div class="record-body">
         <h4>${escapeHtml(med.name)}</h4>
         <div class="sub">${med.doseAmount} ${unit} · a cada ${med.frequencyHours}h</div>
-        <div class="sub">${doneCount} de ${total} doses concluídas (${pct}%)</div>
+        <div class="sub">${doneCount} de ${total} doses aplicadas (${pct}%)${missedCount > 0 ? ` · ${missedCount} não aplicada${missedCount === 1 ? "" : "s"}` : ""}</div>
         ${med.notes ? `<div class="sub">${escapeHtml(med.notes)}</div>` : ""}
         ${nextHtml}
       </div>
@@ -1169,10 +1372,11 @@
     const medItems = [];
     STATE.pets.forEach((pet) => {
       STATE.records.filter((r) => r.petId === pet.id && r.category === "medication").forEach((med) => {
-        const next = med.doses.find((d) => !d.done);
+        const next = med.doses.find(isDosePending);
         if (!next) return;
         const overdue = new Date(next.scheduledAt) < new Date();
-        medItems.push({ pet, med, next, overdue });
+        const expired = isPendingExpired(next, med.frequencyHours);
+        medItems.push({ pet, med, next, overdue, expired });
       });
     });
     medItems.sort((a, b) => new Date(a.next.scheduledAt) - new Date(b.next.scheduledAt));
@@ -1211,24 +1415,36 @@
   }
 
   function renderMedReminderRow(it) {
-    const { pet, med, next, overdue } = it;
+    const { pet, med, next, overdue, expired } = it;
     const div = document.createElement("div");
     div.className = "pet-card";
+    const metaColor = expired ? "color:var(--red);font-weight:700" : overdue ? "color:var(--peach);font-weight:700" : "";
+    const metaTxt = expired ? "Provavelmente não aplicada — " : overdue ? "Atrasada — " : "";
     div.innerHTML = `
       ${pet.photo ? `<img class="pet-avatar" style="width:46px;height:46px" src="${pet.photo}" alt="">` : `<div class="pet-avatar placeholder" style="width:46px;height:46px">${pet.species === "cat" ? ICONS.cat : ICONS.dog}</div>`}
       <div class="pet-card-info">
         <h3 style="font-size:15px">${escapeHtml(med.name)}</h3>
-        <div class="meta" style="${overdue ? "color:var(--red);font-weight:700" : ""}">${escapeHtml(pet.name)} · ${overdue ? "Atrasada — " : ""}${fmtDateTime(next.scheduledAt)}</div>
+        <div class="meta" style="${metaColor}">${escapeHtml(pet.name)} · ${metaTxt}${fmtDateTime(next.scheduledAt)}</div>
       </div>
-      <button class="btn btn-sm btn-primary" id="quick-dose-btn">${ICONS.check}</button>`;
+      <div style="display:flex;gap:6px;flex-shrink:0">
+        <button class="btn btn-sm btn-primary" id="quick-dose-btn" aria-label="Marcar como aplicada">${ICONS.check}</button>
+        <button class="btn btn-sm btn-danger" id="quick-miss-btn" aria-label="Marcar como não aplicada">${ICONS.close}</button>
+      </div>`;
     div.querySelector(".pet-card-info").addEventListener("click", () => navigate(`#/pet/${pet.id}/medication`));
     div.querySelector("#quick-dose-btn").addEventListener("click", async (e) => {
       e.stopPropagation();
-      next.done = true;
-      next.doneAt = new Date().toISOString();
+      setDoseStatus(next, "done");
       await dbPut("records", med);
       await loadAll();
       toast("Dose marcada como aplicada!");
+      render();
+    });
+    div.querySelector("#quick-miss-btn").addEventListener("click", async (e) => {
+      e.stopPropagation();
+      setDoseStatus(next, "missed");
+      await dbPut("records", med);
+      await loadAll();
+      toast("Dose marcada como não aplicada");
       render();
     });
     return div;
@@ -1354,22 +1570,38 @@
     const generatedAt = new Date().toLocaleString("pt-BR");
 
     const html = `<!DOCTYPE html>
-<html lang="pt-BR"><head><meta charset="UTF-8"><title>Relatório PataCare</title>
+<html lang="pt-BR"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Relatório PataCare</title>
 <style>
-  body{ font-family: -apple-system, 'Segoe UI', Arial, sans-serif; color:#2b2b2b; max-width:780px; margin:0 auto; padding:28px 24px 60px; }
+  *{ box-sizing: border-box; }
+  html{ -webkit-text-size-adjust: 100%; }
+  body{ font-family: -apple-system, 'Segoe UI', Arial, sans-serif; color:#2b2b2b; max-width:780px; width:100%; margin:0 auto; padding:28px 24px 60px; overflow-x:hidden; }
   h1{ font-size:22px; margin:0 0 2px; color:#C23A6B; }
   .gen{ font-size:11.5px; color:#888; margin-bottom:22px; }
-  .pet-block h2{ font-size:18px; border-bottom:2px solid #F2598A; padding-bottom:6px; margin-top:0; }
-  .pet-meta{ font-size:13px; color:#555; margin-bottom:16px; }
+  .pet-block{ max-width:100%; }
+  .pet-block h2{ font-size:18px; border-bottom:2px solid #F2598A; padding-bottom:6px; margin-top:0; word-wrap:break-word; }
+  .pet-meta{ font-size:13px; color:#555; margin-bottom:16px; word-wrap:break-word; }
   h3{ font-size:14px; color:#C23A6B; margin:20px 0 6px; }
-  table{ width:100%; border-collapse: collapse; font-size:12.5px; margin-bottom:6px; }
-  th{ text-align:left; background:#FFEFF3; padding:6px 8px; font-weight:700; color:#3A2236; border-bottom:1px solid #eee; }
-  td{ padding:6px 8px; border-bottom:1px solid #f0f0f0; vertical-align:top; }
+  table{ width:100%; max-width:100%; border-collapse: collapse; font-size:12.5px; margin-bottom:6px; table-layout:auto; }
+  th{ text-align:left; background:#FFEFF3; padding:6px 8px; font-weight:700; color:#3A2236; border-bottom:1px solid #eee; overflow-wrap:anywhere; }
+  td{ padding:6px 8px; border-bottom:1px solid #f0f0f0; vertical-align:top; overflow-wrap:break-word; word-break:break-word; }
   .empty{ font-size:12.5px; color:#999; font-style:italic; padding:4px 8px 14px; }
   .footer{ margin-top:36px; font-size:11px; color:#999; border-top:1px solid #eee; padding-top:12px; line-height:1.5; }
   .print-bar{ position:sticky; top:0; background:#fff; padding:10px 0 16px; text-align:right; }
   .print-bar button{ background:#F2598A; color:#fff; border:none; padding:10px 18px; border-radius:20px; font-weight:700; font-size:13px; cursor:pointer; }
-  @media print{ .print-bar{ display:none; } body{ padding:0 6px; } }
+  @media (max-width: 480px){
+    body{ padding:18px 14px 48px; }
+    h1{ font-size:19px; }
+    table{ font-size:11.5px; }
+    th, td{ padding:5px 6px; }
+  }
+  @media print{
+    .print-bar{ display:none; }
+    body{ padding:0 4mm; max-width:100%; }
+    @page{ margin: 12mm; }
+  }
 </style></head>
 <body>
   <div class="print-bar"><button onclick="window.print()">Imprimir / Salvar PDF</button></div>
@@ -1398,26 +1630,30 @@
       if (rows.length === 0) return `<div class="empty">Nenhum registro.</div>`;
       return `<table><thead><tr>${headers.map((h) => `<th>${h}</th>`).join("")}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
     }
+    // valores curtos (datas, doses, pesos) não devem quebrar no meio — só o texto livre (nome/produto/observações) quebra
+    function nw(s) { return `<span style="white-space:nowrap">${s}</span>`; }
 
     const vacRows = vac.map((r) => [
       escapeHtml(r.vaccineType && r.vaccineType !== "outra" ? vaccineTypeLabel(r.vaccineType) : (r.name || "Vacina")),
-      fmtDate(r.date),
-      escapeHtml(r.doseNumber ? (r.isBooster ? "Reforço anual" : `Dose ${r.doseNumber}`) : "—"),
-      r.nextDate ? fmtDate(r.nextDate) : "—"
+      nw(fmtDate(r.date)),
+      nw(escapeHtml(r.doseNumber ? (r.isBooster ? "Reforço anual" : `Dose ${r.doseNumber}`) : "—")),
+      nw(r.nextDate ? fmtDate(r.nextDate) : "—")
     ]);
-    const antiRows = anti.map((r) => [escapeHtml(r.product), fmtDate(r.date), r.nextDate ? fmtDate(r.nextDate) : "—"]);
-    const dermRows = derm.map((r) => [escapeHtml(r.product), fmtDate(r.date), r.nextDate ? fmtDate(r.nextDate) : "—"]);
-    const weightRows = weights.slice(0, 12).map((r) => [fmtDate(r.date), r.weight + " kg", escapeHtml(r.notes || "")]);
-    const heatRows = heat.map((r) => [fmtDate(r.startDate), r.endDate ? fmtDate(r.endDate) : "Em andamento"]);
+    const antiRows = anti.map((r) => [escapeHtml(r.product), nw(fmtDate(r.date)), nw(r.nextDate ? fmtDate(r.nextDate) : "—")]);
+    const dermRows = derm.map((r) => [escapeHtml(r.product), nw(fmtDate(r.date)), nw(r.nextDate ? fmtDate(r.nextDate) : "—")]);
+    const weightRows = weights.slice(0, 12).map((r) => [nw(fmtDate(r.date)), nw(r.weight + " kg"), escapeHtml(r.notes || "")]);
+    const heatRows = heat.map((r) => [nw(fmtDate(r.startDate)), nw(r.endDate ? fmtDate(r.endDate) : "Em andamento")]);
     const medRows = meds.map((m) => {
-      const done = m.doses.filter((d) => d.done).length;
-      return [escapeHtml(m.name), `${m.doseAmount} ${escapeHtml(m.doseUnit || "")} a cada ${m.frequencyHours}h`, `${done}/${m.doses.length} doses`];
+      const done = m.doses.filter(isDoseDone).length;
+      const missed = m.doses.filter(isDoseMissed).length;
+      const progress = `${done}/${m.doses.length} aplicadas${missed > 0 ? ` · ${missed} não aplicada${missed === 1 ? "" : "s"}` : ""}`;
+      return [escapeHtml(m.name), nw(`${m.doseAmount} ${escapeHtml(m.doseUnit || "")} a cada ${m.frequencyHours}h`), nw(progress)];
     });
 
     return `
       <div class="pet-block">
         <h2>${escapeHtml(pet.name)}</h2>
-        <div class="pet-meta">${pet.species === "cat" ? "Gato" : pet.species === "dog" ? "Cão" : "Outro"} · ${escapeHtml(pet.breed || "Raça não informada")} · ${pet.sex === "F" ? "Fêmea" : "Macho"}${pet.birthDate ? " · Nascimento: " + fmtDate(pet.birthDate) + " (" + calcAge(pet.birthDate) + ")" : ""}</div>
+        <div class="pet-meta">${pet.species === "cat" ? "Gato" : pet.species === "dog" ? "Cão" : "Outro"} · ${escapeHtml(pet.breed || "Raça não informada")} · ${pet.sex === "F" ? "Fêmea" : "Macho"} · ${pet.neutered ? "Castrado(a)" : "Não castrado(a)"}${pet.birthDate ? " · Nascimento: " + fmtDate(pet.birthDate) + " (" + calcAge(pet.birthDate) + ")" : ""}</div>
 
         <h3>Vacinas</h3>
         ${table(["Vacina", "Data", "Dose", "Próxima"], vacRows)}
@@ -1515,6 +1751,13 @@
           </div>
         </div>
       </div>
+      <div class="field">
+        <label>Castrado(a)?</label>
+        <div class="seg" id="seg-neutered">
+          <button data-v="0" type="button">Não</button>
+          <button data-v="1" type="button">Sim</button>
+        </div>
+      </div>
       <div class="field-row">
         <div class="field">
           <label>Raça</label>
@@ -1538,8 +1781,10 @@
     }
     setSeg("seg-species", existing ? existing.species : "dog");
     setSeg("seg-sex", existing ? existing.sex : "M");
+    setSeg("seg-neutered", existing && existing.neutered ? "1" : "0");
     sheet.querySelectorAll("#seg-species button").forEach((b) => b.addEventListener("click", () => setSeg("seg-species", b.dataset.v)));
     sheet.querySelectorAll("#seg-sex button").forEach((b) => b.addEventListener("click", () => setSeg("seg-sex", b.dataset.v)));
+    sheet.querySelectorAll("#seg-neutered button").forEach((b) => b.addEventListener("click", () => setSeg("seg-neutered", b.dataset.v)));
 
     function refreshPhotoPreview() {
       const wrap = sheet.querySelector("#ph-icon-wrap");
@@ -1564,11 +1809,12 @@
       if (!name) { toast("Dá um nome pro seu pet 🐾"); return; }
       const species = sheet.querySelector("#seg-species .active").dataset.v;
       const sex = sheet.querySelector("#seg-sex .active").dataset.v;
+      const neutered = sheet.querySelector("#seg-neutered .active").dataset.v === "1";
       const breed = sheet.querySelector("#f-breed").value.trim();
       const birthDate = sheet.querySelector("#f-birth").value;
       const notes = sheet.querySelector("#f-notes").value.trim();
       const pet = existing ? Object.assign({}, existing) : { id: uid(), createdAt: Date.now() };
-      Object.assign(pet, { name, species, sex, breed, birthDate, notes, photo: photoData });
+      Object.assign(pet, { name, species, sex, neutered, breed, birthDate, notes, photo: photoData });
       await dbPut("pets", pet);
       await loadAll();
       closeSheet();
@@ -1594,13 +1840,13 @@
   /* ========================== FORMULÁRIO: REGISTROS =============================== */
   const RECORD_FORMS = {
     antiparasitic: { title: "antipulgas/carrapatos", fields: [
-      { key: "product", label: "Produto aplicado", type: "text", required: true, placeholder: "Ex: Bravecto, Simparic, NexGard..." },
+      { key: "product", label: "Produto aplicado", type: "text", required: true, placeholder: "Ex: Bravecto, Simparic, NexGard...", suggest: true },
       { key: "date", label: "Data aplicada", type: "date", required: true },
       { key: "nextDate", label: "Próxima aplicação (opcional)", type: "date" },
       { key: "notes", label: "Observações", type: "textarea" }
     ]},
     dewormer: { title: "vermífugo", fields: [
-      { key: "product", label: "Vermífugo aplicado", type: "text", required: true, placeholder: "Ex: Drontal, Vermivet..." },
+      { key: "product", label: "Vermífugo aplicado", type: "text", required: true, placeholder: "Ex: Drontal, Vermivet...", suggest: true },
       { key: "date", label: "Data aplicada", type: "date", required: true },
       { key: "nextDate", label: "Próxima aplicação (opcional)", type: "date" },
       { key: "notes", label: "Observações", type: "textarea" }
@@ -1617,7 +1863,20 @@
     ]}
   };
 
-  function fieldHtml(f, value) {
+  // Sugestões de preenchimento: valores já usados antes para o mesmo campo/categoria (entre todos os pets)
+  function distinctValues(category, key) {
+    const recs = STATE.records.filter((r) => r.category === category && r[key])
+      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    const seen = new Set();
+    const out = [];
+    recs.forEach((r) => {
+      const v = r[key];
+      if (!seen.has(v)) { seen.add(v); out.push(v); }
+    });
+    return out;
+  }
+
+  function fieldHtml(f, value, suggestions) {
     const v = value == null ? "" : value;
     if (f.type === "textarea") {
       return `<div class="field"><label>${f.label}</label><textarea id="rf-${f.key}" placeholder="${f.placeholder || ""}">${escapeHtml(v)}</textarea></div>`;
@@ -1633,6 +1892,10 @@
       </div>`;
     }
     const step = f.step ? `step="${f.step}"` : "";
+    if (f.type === "text" && suggestions && suggestions.length) {
+      const listId = "dl-" + f.key;
+      return `<div class="field"><label>${f.label}</label><input type="text" list="${listId}" id="rf-${f.key}" placeholder="${f.placeholder || ""}" value="${escapeHtml(v)}" autocomplete="off"><datalist id="${listId}">${suggestions.map((s) => `<option value="${escapeHtml(s)}"></option>`).join("")}</datalist></div>`;
+    }
     return `<div class="field"><label>${f.label}${f.required ? "" : ""}</label><input type="${f.type}" id="rf-${f.key}" ${step} placeholder="${f.placeholder || ""}" value="${escapeHtml(v)}"></div>`;
   }
 
@@ -1662,7 +1925,8 @@
       </div>
       <div class="field" id="vf-name-field" style="display:none">
         <label>Nome da vacina</label>
-        <input type="text" id="vf-name" placeholder="Ex: Leptospirose extra, Polivalente felina..." value="${existing ? escapeHtml(existing.name || "") : ""}">
+        <input type="text" id="vf-name" list="dl-vf-name" autocomplete="off" placeholder="Ex: Leptospirose extra, Polivalente felina..." value="${existing ? escapeHtml(existing.name || "") : ""}">
+        <datalist id="dl-vf-name">${distinctValues("vaccine", "name").map((s) => `<option value="${escapeHtml(s)}"></option>`).join("")}</datalist>
       </div>
       <div class="field">
         <label>Data aplicada</label>
@@ -1776,7 +2040,7 @@
     const today = todayISO();
     const defaults = { date: today, startDate: today };
 
-    const fieldsHtml = cfg.fields.map((f) => fieldHtml(f, existing ? existing[f.key] : defaults[f.key])).join("");
+    const fieldsHtml = cfg.fields.map((f) => fieldHtml(f, existing ? existing[f.key] : defaults[f.key], f.suggest ? distinctValues(category, f.key) : null)).join("");
     const sheet = openSheetEl(`
       <div class="sheet-handle"></div>
       <div class="sheet-header">
@@ -1866,7 +2130,8 @@
       </div>
       <div class="field">
         <label>Nome do medicamento</label>
-        <input type="text" id="mf-name" placeholder="Ex: Amoxicilina, Meloxicam..." value="${existing ? escapeHtml(existing.name) : ""}">
+        <input type="text" id="mf-name" list="dl-mf-name" autocomplete="off" placeholder="Ex: Amoxicilina, Meloxicam..." value="${existing ? escapeHtml(existing.name) : ""}">
+        <datalist id="dl-mf-name">${distinctValues("medication", "name").map((s) => `<option value="${escapeHtml(s)}"></option>`).join("")}</datalist>
       </div>
       <div class="field">
         <label>Forma</label>
@@ -1916,6 +2181,19 @@
     setSeg(existing ? existing.form : "comprimido");
     sheet.querySelectorAll("#mf-form button").forEach((b) => b.addEventListener("click", () => setSeg(b.dataset.v)));
 
+    if (!isEdit) {
+      sheet.querySelector("#mf-name").addEventListener("change", (e) => {
+        const typed = e.target.value.trim();
+        const prev = STATE.records.filter((r) => r.category === "medication" && r.name === typed)
+          .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))[0];
+        if (!prev) return;
+        setSeg(prev.form);
+        sheet.querySelector("#mf-amount").value = prev.doseAmount;
+        sheet.querySelector("#mf-freq").value = prev.frequencyHours;
+        toast("Preenchido com base no último uso de " + typed);
+      });
+    }
+
     let totalDosesDirty = isEdit;
     function recalcTotal() {
       if (totalDosesDirty) return;
@@ -1950,13 +2228,13 @@
       const startDateTime = new Date(startDateTimeLocal).toISOString();
       let doses;
       if (isEdit) {
-        // preserva doses já marcadas como feitas; recalcula apenas as pendentes se algo mudou
-        const doneOnes = existing.doses.filter((d) => d.done);
-        if (doneOnes.length >= totalDoses) {
-          doses = doneOnes.slice(0, totalDoses);
+        // preserva doses já resolvidas (aplicadas ou marcadas como não aplicadas); recalcula só as pendentes
+        const resolvedOnes = existing.doses.filter((d) => !isDosePending(d));
+        if (resolvedOnes.length >= totalDoses) {
+          doses = resolvedOnes.slice(0, totalDoses);
         } else {
           const newSchedule = buildMedicationDoses(startDateTime, frequencyHours, totalDoses);
-          doses = doneOnes.concat(newSchedule.slice(doneOnes.length));
+          doses = resolvedOnes.concat(newSchedule.slice(resolvedOnes.length));
         }
       } else {
         doses = buildMedicationDoses(startDateTime, frequencyHours, totalDoses);
@@ -1985,18 +2263,41 @@
   }
 
   function openMedicationChecklist(med, pet) {
-    const doneCount = med.doses.filter((d) => d.done).length;
+    const doneCount = med.doses.filter(isDoseDone).length;
+    const missedCount = med.doses.filter(isDoseMissed).length;
     const rowsHtml = med.doses.map((d, i) => {
-      const overdue = !d.done && new Date(d.scheduledAt) < new Date();
+      const status = doseStatus(d);
+      const overdue = status === "pending" && new Date(d.scheduledAt) < new Date();
+      const expired = isPendingExpired(d, med.frequencyHours);
+      let iconBg, iconHtml, subText, subStyle;
+      if (status === "done") {
+        iconBg = "var(--mint-soft)";
+        iconHtml = `<span style="color:var(--mint);display:flex">${ICONS.check}</span>`;
+        subText = "Aplicada em " + fmtDateTime(d.doneAt);
+        subStyle = "";
+      } else if (status === "missed") {
+        iconBg = "var(--red-soft)";
+        iconHtml = `<span style="color:var(--red);display:flex">${ICONS.close}</span>`;
+        subText = "Marcada como não aplicada";
+        subStyle = "color:var(--red);font-weight:700";
+      } else {
+        iconBg = expired ? "var(--red-soft)" : overdue ? "var(--peach-soft)" : "var(--surface-2)";
+        iconHtml = `<span style="color:${expired ? "var(--red)" : overdue ? "var(--peach)" : "var(--pink-strong)"};display:flex">${ICONS.clock}</span>`;
+        subText = (expired ? "Provavelmente não aplicada — prevista " : overdue ? "Atrasada — prevista " : "Prevista para ") + fmtDateTime(d.scheduledAt);
+        subStyle = expired ? "color:var(--red);font-weight:700" : overdue ? "color:var(--peach);font-weight:700" : "";
+      }
+      const actionsHtml = status === "pending"
+        ? `<button class="dose-act-btn ok" data-act="done" data-i="${i}" aria-label="Marcar como aplicada">${ICONS.check}</button>
+           <button class="dose-act-btn bad" data-act="missed" data-i="${i}" aria-label="Marcar como não aplicada">${ICONS.close}</button>`
+        : `<button class="dose-undo-btn" data-act="undo" data-i="${i}">Desfazer</button>`;
       return `
-        <div class="settings-row med-dose-row" data-i="${i}" style="cursor:pointer">
-          <div class="ic" style="background:${d.done ? "var(--mint-soft)" : overdue ? "var(--red-soft)" : "var(--surface-2)"}">
-            ${d.done ? `<span style="color:var(--mint);display:flex">${ICONS.check}</span>` : `<span style="color:${overdue ? "var(--red)" : "var(--pink-strong)"};display:flex">${ICONS.clock}</span>`}
-          </div>
+        <div class="settings-row med-dose-row">
+          <div class="ic" style="background:${iconBg}">${iconHtml}</div>
           <div class="lbl">
             <div class="t">Dose ${i + 1} de ${med.doses.length}</div>
-            <div class="s" style="${overdue ? "color:var(--red);font-weight:700" : ""}">${d.done ? "Aplicada em " + fmtDateTime(d.doneAt) : (overdue ? "Atrasada — prevista " : "Prevista para ") + fmtDateTime(d.scheduledAt)}</div>
+            <div class="s" style="${subStyle}">${subText}</div>
           </div>
+          <div class="dose-actions">${actionsHtml}</div>
         </div>`;
     }).join("");
 
@@ -2006,21 +2307,25 @@
         <h3>${escapeHtml(med.name)}</h3>
         <button class="icon-btn" id="sheet-close">${ICONS.close}</button>
       </div>
-      <p style="font-size:13px;color:var(--text-muted);margin-bottom:14px">${med.doseAmount} ${med.doseUnit} · a cada ${med.frequencyHours}h · ${doneCount} de ${med.doses.length} doses concluídas</p>
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:14px">${med.doseAmount} ${med.doseUnit} · a cada ${med.frequencyHours}h · ${doneCount} de ${med.doses.length} aplicadas${missedCount > 0 ? ` · ${missedCount} não aplicada${missedCount === 1 ? "" : "s"}` : ""}</p>
       <div class="card" style="padding:6px 12px;margin-bottom:16px">${rowsHtml}</div>
       <button class="btn btn-secondary btn-block" id="mc-edit">${ICONS.edit} Editar medicamento</button>
     `);
     sheet.querySelector("#sheet-close").addEventListener("click", closeSheet);
-    sheet.querySelectorAll(".med-dose-row").forEach((row) => {
-      row.addEventListener("click", async () => {
-        const i = parseInt(row.dataset.i, 10);
+    sheet.querySelectorAll("[data-act]").forEach((btn) => {
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const i = parseInt(btn.dataset.i, 10);
         const dose = med.doses[i];
-        dose.done = !dose.done;
-        dose.doneAt = dose.done ? new Date().toISOString() : null;
+        const act = btn.dataset.act;
+        if (act === "done") setDoseStatus(dose, "done");
+        else if (act === "missed") setDoseStatus(dose, "missed");
+        else if (act === "undo") setDoseStatus(dose, "pending");
         await dbPut("records", med);
         await loadAll();
         closeSheet();
-        toast(dose.done ? "Dose marcada como aplicada!" : "Dose desmarcada");
+        const msg = act === "done" ? "Dose marcada como aplicada!" : act === "missed" ? "Dose marcada como não aplicada" : "Dose voltou para pendente";
+        toast(msg);
         render();
         const refreshedMed = STATE.records.find((r) => r.id === med.id);
         if (refreshedMed) openMedicationChecklist(refreshedMed, pet);

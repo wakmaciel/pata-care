@@ -324,6 +324,12 @@ html[data-theme="dark"] .chip.soon{ color: var(--peach); }
 .chart-wrap .latest .delta{ margin-left:auto; font-size:12.5px; font-weight:700; padding:3px 9px; border-radius: var(--radius-pill); }
 canvas#weightChart{ width:100%; height: 140px; display:block; }
 
+.weight-gauge{ padding: 4px 2px; }
+.weight-gauge-track{ position:relative; height:8px; border-radius:4px; background: var(--surface-2); margin-bottom:8px; }
+.weight-gauge-zone{ position:absolute; top:0; bottom:0; border-radius:4px; background: var(--mint-soft); }
+.weight-gauge-marker{ position:absolute; top:50%; width:14px; height:14px; border-radius:50%; transform: translate(-50%, -50%); box-shadow:0 0 0 3px var(--surface), var(--shadow-sm); }
+.weight-gauge-labels{ display:flex; justify-content:space-between; font-size:11px; font-weight:700; color: var(--text-muted); }
+
 /* Forms / modal */
 .sheet-overlay{
   position: fixed; inset:0; background: rgba(58,34,54,.45); z-index: 100;
@@ -400,6 +406,13 @@ canvas#weightChart{ width:100%; height: 140px; display:block; }
 .settings-row .lbl{ flex:1; }
 .settings-row .lbl .t{ font-size:15px; font-weight:600; }
 .settings-row .lbl .s{ font-size:12.5px; color: var(--text-muted); margin-top:1px; }
+.med-dose-row{ align-items:center; }
+.dose-actions{ display:flex; gap:6px; flex-shrink:0; align-items:center; }
+.dose-act-btn{ width:32px; height:32px; border-radius:50%; border:none; display:flex; align-items:center; justify-content:center; cursor:pointer; flex-shrink:0; }
+.dose-act-btn svg{ width:15px; height:15px; stroke:currentColor; fill:none; }
+.dose-act-btn.ok{ background: var(--mint-soft); color: var(--mint); }
+.dose-act-btn.bad{ background: var(--red-soft); color: var(--red); }
+.dose-undo-btn{ border:none; background:none; color: var(--text-faint); font-size:12px; font-weight:700; text-decoration:underline; cursor:pointer; flex-shrink:0; padding:4px; }
 
 .theme-toggle{ display:flex; background: var(--surface-2); border-radius: var(--radius-pill); padding:3px; gap:2px; }
 .theme-toggle button{ border:none; background:none; padding:7px 11px; border-radius: var(--radius-pill); cursor:pointer; display:flex; align-items:center; }

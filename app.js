@@ -206,11 +206,24 @@
     return STATE.records.filter((r) => r.petId === petId && r.category === category)
       .sort((a, b) => (b.date || b.startDate || "").localeCompare(a.date || a.startDate || ""));
   }
+  function vaccineGroupKey(rec) {
+    if (rec.vaccineType && rec.vaccineType !== "outra") return "vaccine:" + rec.vaccineType;
+    return "vaccine:outra:" + (rec.name || rec.id);
+  }
   function careRecordsFor(petId) {
     const pet = getPet(petId);
     const disabled = (pet && pet.disabledVaccineTypes) || [];
-    return STATE.records.filter((r) => r.petId === petId && (r.category === "vaccine" || r.category === "antiparasitic" || r.category === "dewormer"))
+    const all = STATE.records.filter((r) => r.petId === petId && (r.category === "vaccine" || r.category === "antiparasitic" || r.category === "dewormer"))
       .filter((r) => !(r.category === "vaccine" && r.vaccineType && disabled.includes(r.vaccineType)));
+    // Só o registro mais recente de cada vacina/categoria deve valer para status de atraso —
+    // um reforço aplicado mais novo "substitui" o aviso de atraso da dose anterior.
+    const latestByKey = new Map();
+    all.forEach((r) => {
+      const key = r.category === "vaccine" ? vaccineGroupKey(r) : r.category;
+      const cur = latestByKey.get(key);
+      if (!cur || r.date > cur.date) latestByKey.set(key, r);
+    });
+    return [...latestByKey.values()];
   }
   function petBadgeStatus(petId) {
     const recs = careRecordsFor(petId);
@@ -490,14 +503,21 @@
     const visibleTabs = TABS.filter((t) => !t.femaleOnly || pet.sex === "F");
     const tabsRow = document.createElement("div");
     tabsRow.className = "tabs";
+    let activeTabBtn = null;
     visibleTabs.forEach((t) => {
       const b = document.createElement("button");
       b.className = "tab" + (t.id === tab ? " active" : "");
       b.innerHTML = (t.icon ? ICONS[t.icon] : "") + `<span>${t.label}</span>`;
       b.addEventListener("click", () => navigate(`#/pet/${petId}/${t.id}`));
       tabsRow.appendChild(b);
+      if (t.id === tab) activeTabBtn = b;
     });
     main.appendChild(tabsRow);
+    if (activeTabBtn) {
+      requestAnimationFrame(() => {
+        activeTabBtn.scrollIntoView({ behavior: "auto", block: "nearest", inline: "center" });
+      });
+    }
 
     const content = document.createElement("div");
     main.appendChild(content);
@@ -540,20 +560,26 @@
 
     const summary = document.createElement("div");
     summary.className = "card";
-    function row(icon, label, list, hash) {
+    const careLatest = careRecordsFor(pet.id);
+    function row(icon, label, list, category, hash) {
       const r = document.createElement("div");
       r.className = "settings-row";
       r.style.cursor = "pointer";
-      const next = list.find((x) => x.nextDate);
-      const st = next ? dueStatus(next.nextDate) : null;
+      const latestOfCategory = careLatest.filter((x) => x.category === category && x.nextDate);
+      let worst = null;
+      latestOfCategory.forEach((x) => {
+        const s = dueStatus(x.nextDate);
+        if (s.status === "overdue") worst = s.status === worst ? worst : "overdue";
+        else if (s.status === "soon" && worst !== "overdue") worst = "soon";
+      });
       let statusHtml = `<span class="s">${list.length} registro${list.length === 1 ? "" : "s"}</span>`;
-      if (st && st.status === "overdue") statusHtml = `<span class="s" style="color:var(--red);font-weight:700">Atrasado há ${st.days}d</span>`;
-      else if (st && st.status === "soon") statusHtml = `<span class="s" style="color:var(--peach);font-weight:700">Próxima em ${st.days}d</span>`;
+      if (worst === "overdue") statusHtml = `<span class="s" style="color:var(--red);font-weight:700">Atrasado</span>`;
+      else if (worst === "soon") statusHtml = `<span class="s" style="color:var(--peach);font-weight:700">Próxima em breve</span>`;
       r.innerHTML = `<div class="ic">${ICONS[icon]}</div><div class="lbl"><div class="t">${label}</div>${statusHtml}</div><span class="chevron">${ICONS.chevronRight}</span>`;
       r.addEventListener("click", () => navigate(hash));
       return r;
     }
-    summary.appendChild(row("syringe", "Vacinas", vac, `#/pet/${pet.id}/vaccine`));
+    summary.appendChild(row("syringe", "Vacinas", vac, "vaccine", `#/pet/${pet.id}/vaccine`));
     const meds = STATE.records.filter((r) => r.petId === pet.id && r.category === "medication");
     const medActive = meds.filter((m) => m.doses.some((d) => !d.done));
     const medRow = document.createElement("div");
@@ -563,8 +589,8 @@
     medRow.innerHTML = `<div class="ic">${ICONS.medkit}</div><div class="lbl"><div class="t">Medicamentos</div>${medStatus}</div><span class="chevron">${ICONS.chevronRight}</span>`;
     medRow.addEventListener("click", () => navigate(`#/pet/${pet.id}/medication`));
     summary.appendChild(medRow);
-    summary.appendChild(row("bug", "Antipulgas/Carrapatos", anti, `#/pet/${pet.id}/antiparasitic`));
-    summary.appendChild(row("pill", "Vermífugos", derm, `#/pet/${pet.id}/dewormer`));
+    summary.appendChild(row("bug", "Antipulgas/Carrapatos", anti, "antiparasitic", `#/pet/${pet.id}/antiparasitic`));
+    summary.appendChild(row("pill", "Vermífugos", derm, "dewormer", `#/pet/${pet.id}/dewormer`));
     const wr = document.createElement("div");
     wr.className = "settings-row"; wr.style.cursor = "pointer";
     wr.innerHTML = `<div class="ic">${ICONS.scale}</div><div class="lbl"><div class="t">Peso</div><span class="s">${lastWeight ? lastWeight.weight + " kg em " + fmtDate(lastWeight.date) : "Sem registros"}</span></div><span class="chevron">${ICONS.chevronRight}</span>`;
@@ -678,13 +704,128 @@
       empty.querySelector("#btn-add-rec").addEventListener("click", () => openForm(null));
       return;
     }
-    if (category === "vaccine" && list.length > 0) {
+
+    if (category === "vaccine") {
       const title = document.createElement("div");
       title.className = "section-title";
-      title.textContent = "Histórico";
+      title.textContent = "Histórico (por vacina)";
       content.appendChild(title);
+      vaccineGroupsList(pet.id).forEach((group) => content.appendChild(renderVaccineGroupRow(group, pet)));
+      return;
     }
-    list.forEach((rec) => content.appendChild(renderRecordCard(rec, cfg, category, pet.id)));
+
+    const latestIds = latestRecordIdsForCategory(pet.id, category);
+    list.forEach((rec) => content.appendChild(renderRecordCard(rec, cfg, category, pet.id, latestIds.has(rec.id))));
+  }
+
+  function latestRecordIdsForCategory(petId, category) {
+    const all = STATE.records.filter((r) => r.petId === petId && r.category === category);
+    const map = new Map();
+    all.forEach((r) => {
+      const key = category === "vaccine" ? vaccineGroupKey(r) : category;
+      const cur = map.get(key);
+      if (!cur || r.date > cur.date) map.set(key, r);
+    });
+    return new Set([...map.values()].map((r) => r.id));
+  }
+
+  function vaccineGroupsList(petId) {
+    const all = STATE.records.filter((r) => r.petId === petId && r.category === "vaccine");
+    const map = new Map();
+    all.forEach((r) => {
+      const key = vaccineGroupKey(r);
+      if (!map.has(key)) {
+        const title = (r.vaccineType && r.vaccineType !== "outra") ? vaccineTypeLabel(r.vaccineType) : (r.name || "Vacina");
+        map.set(key, { key, title, vaccineType: r.vaccineType, records: [] });
+      }
+      map.get(key).records.push(r);
+    });
+    const groups = [...map.values()];
+    groups.forEach((g) => g.records.sort((a, b) => a.date.localeCompare(b.date))); // asc
+    groups.sort((a, b) => {
+      const lastA = a.records[a.records.length - 1].date;
+      const lastB = b.records[b.records.length - 1].date;
+      return lastB.localeCompare(lastA); // grupos com aplicação mais recente primeiro
+    });
+    return groups;
+  }
+
+  function renderVaccineGroupRow(group, pet) {
+    const last = group.records[group.records.length - 1];
+    const st = dueStatus(last.nextDate);
+    const div = document.createElement("div");
+    div.className = "record";
+    div.style.cursor = "pointer";
+    let statusHtml = `<span class="sub">${group.records.length} dose${group.records.length === 1 ? "" : "s"} · última em ${fmtDate(last.date)}</span>`;
+    let nextHtml = "";
+    if (last.nextDate) {
+      const color = st.status === "overdue" ? "var(--red)" : st.status === "soon" ? "var(--peach)" : "var(--mint)";
+      const txt = st.status === "overdue" ? `Atrasado há ${st.days} dia${st.days === 1 ? "" : "s"}` : st.status === "soon" ? `Em ${st.days} dia${st.days === 1 ? "" : "s"}` : `Próxima em ${fmtDate(last.nextDate)}`;
+      nextHtml = `<hr class="record-divider"><div class="record-next" style="color:${color}">${ICONS.calendar} ${txt}</div>`;
+    }
+    div.innerHTML = `
+      <div class="record-stamp"><span class="d">${pad(parseISODate(last.date).getDate())}</span><span class="m">${MONTHS_ABBR[parseISODate(last.date).getMonth()]}</span></div>
+      <div class="record-body">
+        <h4>${escapeHtml(group.title)}</h4>
+        ${statusHtml}
+        ${nextHtml}
+      </div>
+      <span class="chevron">${ICONS.chevronRight}</span>`;
+    div.addEventListener("click", () => openVaccineGroupHistory(pet.id, group));
+    return div;
+  }
+
+  function openVaccineGroupHistory(petId, group) {
+    const last = group.records[group.records.length - 1];
+    const st = dueStatus(last.nextDate);
+    const rowsHtml = group.records.map((r) => {
+      const cfg = categoryConfig("vaccine");
+      const badge = cfg.getBadge(r);
+      return `
+        <div class="vtl-row">
+          <div class="vtl-date">${fmtDate(r.date)}</div>
+          <div class="vtl-spine"><span class="vtl-dot"></span></div>
+          <div class="vtl-card" data-id="${r.id}">
+            <h4>${badge ? escapeHtml(badge) : escapeHtml(group.title)}</h4>
+            ${r.notes ? `<div class="sub">${escapeHtml(r.notes)}</div>` : ""}
+            ${r.photo ? `<img class="vtl-thumb" src="${r.photo}" alt="Etiqueta" data-photo="${r.id}">` : ""}
+          </div>
+        </div>`;
+    }).join("");
+
+    let nextBannerHtml = "";
+    if (last.nextDate) {
+      const color = st.status === "overdue" ? "var(--red)" : st.status === "soon" ? "var(--peach)" : "var(--mint)";
+      const bg = st.status === "overdue" ? "var(--red-soft)" : st.status === "soon" ? "var(--peach-soft)" : "var(--mint-soft)";
+      const txt = st.status === "overdue" ? `Próxima dose atrasada há ${st.days} dia${st.days === 1 ? "" : "s"} (prevista para ${fmtDate(last.nextDate)})` : st.status === "soon" ? `Próxima dose em ${st.days} dia${st.days === 1 ? "" : "s"} (${fmtDate(last.nextDate)})` : `Próxima dose prevista para ${fmtDate(last.nextDate)}`;
+      nextBannerHtml = `<div class="vtl-next" style="background:${bg};color:${color}">${ICONS.calendar} ${txt}</div>`;
+    }
+
+    const sheet = openSheetEl(`
+      <div class="sheet-handle"></div>
+      <div class="sheet-header">
+        <h3>${escapeHtml(group.title)}</h3>
+        <button class="icon-btn" id="sheet-close">${ICONS.close}</button>
+      </div>
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:14px">Ordem cronológica · toque em uma dose para editar</p>
+      <div class="vtl">${rowsHtml}</div>
+      ${nextBannerHtml}
+    `);
+    sheet.querySelector("#sheet-close").addEventListener("click", closeSheet);
+    sheet.querySelectorAll(".vtl-card").forEach((card) => {
+      card.addEventListener("click", (e) => {
+        if (e.target.closest("img")) return;
+        const rec = group.records.find((r) => r.id === card.dataset.id);
+        if (rec) openVaccineForm(petId, rec);
+      });
+    });
+    sheet.querySelectorAll(".vtl-thumb").forEach((img) => {
+      img.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const rec = group.records.find((r) => r.id === img.dataset.photo);
+        if (rec) showLightbox(rec.photo);
+      });
+    });
   }
 
   function renderVaccineForecast(content, pet) {
@@ -746,20 +887,28 @@
           <h4>${escapeHtml(protocol.label)}</h4>
           <button class="vf-toggle" data-type="${type}">${isOff ? ICONS.check + " Habilitar" : ICONS.close + " Desabilitar"}</button>
         </div>
-        <div class="vf-row">${dotsHtml}</div>`;
-      card.querySelector(".vf-toggle").addEventListener("click", async () => {
-        const set = new Set(pet.disabledVaccineTypes || []);
-        if (set.has(type)) set.delete(type); else set.add(type);
-        pet.disabledVaccineTypes = [...set];
-        await dbPut("pets", pet);
-        await loadAll();
-        render();
+        <div class="vf-row" data-open="${type}">${dotsHtml}</div>`;
+      card.querySelector(".vf-toggle").addEventListener("click", (e) => {
+        e.stopPropagation();
+        (async () => {
+          const set = new Set(pet.disabledVaccineTypes || []);
+          if (set.has(type)) set.delete(type); else set.add(type);
+          pet.disabledVaccineTypes = [...set];
+          await dbPut("pets", pet);
+          await loadAll();
+          render();
+        })();
+      });
+      card.querySelector(".vf-row").addEventListener("click", () => {
+        const group = vaccineGroupsList(pet.id).find((g) => g.key === "vaccine:" + type);
+        if (group) openVaccineGroupHistory(pet.id, group);
       });
       content.appendChild(card);
     });
   }
 
-  function renderRecordCard(rec, cfg, category, petId) {
+
+  function renderRecordCard(rec, cfg, category, petId, isLatest) {
     const div = document.createElement("div");
     div.className = "record";
     const d = parseISODate(rec.date);
@@ -767,10 +916,12 @@
     const title = cfg.getTitle ? cfg.getTitle(rec) : (rec[cfg.primaryKey] || cfg.title);
     const badge = cfg.getBadge ? cfg.getBadge(rec) : null;
     let nextHtml = "";
-    if (rec.nextDate) {
+    if (rec.nextDate && isLatest !== false) {
       const color = st.status === "overdue" ? "var(--red)" : st.status === "soon" ? "var(--peach)" : "var(--mint)";
       const txt = st.status === "overdue" ? `Atrasado há ${st.days} dia${st.days === 1 ? "" : "s"}` : st.status === "soon" ? `Em ${st.days} dia${st.days === 1 ? "" : "s"} (${fmtDate(rec.nextDate)})` : `Próxima em ${fmtDate(rec.nextDate)}`;
       nextHtml = `<hr class="record-divider"><div class="record-next" style="color:${color}">${ICONS.calendar} ${txt}</div>`;
+    } else if (rec.nextDate && isLatest === false) {
+      nextHtml = `<hr class="record-divider"><div class="record-next" style="color:var(--text-faint)">${ICONS.check} Substituída por um registro mais novo</div>`;
     }
     div.innerHTML = `
       <div class="record-stamp"><span class="d">${pad(d.getDate())}</span><span class="m">${MONTHS_ABBR[d.getMonth()]}</span></div>

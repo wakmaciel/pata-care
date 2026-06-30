@@ -1,8 +1,9 @@
 /* PataCare — service worker simples para uso offline.
    Estratégia: cache-first para o "casco" do app (HTML/CSS/JS/ícones).
    Os dados dos pets ficam no IndexedDB, que o service worker não precisa tocar. */
+// ⚠️ BUILD_VERSION é substituído automaticamente pelo GitHub Actions a cada deploy.
 
-const CACHE_NAME = "patacare-cache-v2";
+const CACHE_NAME = "patacare-cache-__BUILD_VERSION__";
 const APP_SHELL = [
   "./",
   "./index.html",

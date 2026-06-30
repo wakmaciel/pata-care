@@ -42,7 +42,80 @@
     info: '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5.2M12 8v.1"/></svg>',
     dots: '<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="5.5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="18.5" r="1.6"/></svg>'
   };
-  /* ------------------------------ Util ----------------------------------- */
+// =========================================================================
+
+/* ── INTEGRAÇÃO CALENDÁRIO PETS 🐾 ──────────────────────────────────────── */
+const PETS_CALENDAR_ID = "ABDB3A22-B3BA-4B45-98EB-328EE31CDFB5"; // Pets 🐾
+
+const ALERT_OPTIONS = [
+  { label: "No momento", minutes: 0 },
+  { label: "1 hora antes", minutes: 60 },
+  { label: "1 dia antes", minutes: 1440 },
+  { label: "2 dias antes", minutes: 2880 },
+];
+
+function agendarNoCalendario(petName, title, dateISO, notes, alertMinutes) {
+  if (alertMinutes === undefined) alertMinutes = 1440;
+  const startTime = dateISO + "T09:00:00";
+  const endDate = new Date(dateISO + "T09:30:00").toISOString().replace(".000Z", "");
+  const nudges = alertMinutes > 0 ? [{ minutesBefore: alertMinutes }] : [];
+  window.parent && window.parent.postMessage({
+    type: "CLAUDE_CALENDAR_CREATE",
+    payload: {
+      calendarId: PETS_CALENDAR_ID,
+      title: title + " — " + petName,
+      startTime: startTime,
+      endTime: endDate,
+      eventDescription: notes || title + " para " + petName,
+      nudges: nudges,
+    }
+  }, "*");
+  toast("Agendado no calendário Pets 🐾!");
+}
+
+function openCalendarModal(petName, title, dateISO, notes) {
+  const alertOptionsHtml = ALERT_OPTIONS.map((a) =>
+    `<option value="${a.minutes}" ${a.minutes === 1440 ? "selected" : ""}>${a.label}</option>`
+  ).join("");
+
+  const sheet = openSheetEl(`
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <h3>📅 Agendar no Calendário</h3>
+      <button class="icon-btn" id="cal-close">${ICONS.close}</button>
+    </div>
+    <div class="card" style="margin-bottom:16px;padding:14px 16px">
+      <div style="font-size:13px;color:var(--text-muted)">Evento</div>
+      <div style="font-weight:700;font-size:16px;margin-top:2px">${escapeHtml(title)} — ${escapeHtml(petName)}</div>
+      <div style="font-size:13px;color:var(--text-muted);margin-top:4px">📆 ${fmtDate(dateISO)}</div>
+    </div>
+    <div class="card" style="margin-bottom:16px;padding:14px 16px;display:flex;align-items:center;gap:10px">
+      <div style="font-size:22px">🐾</div>
+      <div>
+        <div style="font-weight:700;font-size:14px">Pets 🐾</div>
+        <div style="font-size:12px;color:var(--text-muted)">Calendário selecionado</div>
+      </div>
+    </div>
+    <div class="field">
+      <label>Lembrete</label>
+      <select id="cal-alert">${alertOptionsHtml}</select>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-secondary btn-block" id="cal-cancel">Cancelar</button>
+      <button class="btn btn-primary btn-block" id="cal-confirm">${ICONS.check} Agendar</button>
+    </div>
+  `);
+
+  sheet.querySelector("#cal-close").addEventListener("click", closeSheet);
+  sheet.querySelector("#cal-cancel").addEventListener("click", closeSheet);
+  sheet.querySelector("#cal-confirm").addEventListener("click", () => {
+    const alertMinutes = parseInt(sheet.querySelector("#cal-alert").value, 10);
+    agendarNoCalendario(petName, title, dateISO, notes, alertMinutes);
+    closeSheet();
+  });
+}
+
+    /* ------------------------------ Util ----------------------------------- */
   const MONTHS_ABBR = ["JAN","FEV","MAR","ABR","MAI","JUN","JUL","AGO","SET","OUT","NOV","DEZ"];
   const MONTHS_FULL = ["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
 
@@ -859,30 +932,46 @@
     return groups;
   }
 
-  function renderVaccineGroupRow(group, pet) {
-    const last = group.records[group.records.length - 1];
-    const st = dueStatus(last.nextDate);
-    const div = document.createElement("div");
-    div.className = "record";
-    div.style.cursor = "pointer";
-    let statusHtml = `<span class="sub">${group.records.length} dose${group.records.length === 1 ? "" : "s"} · última em ${fmtDate(last.date)}</span>`;
-    let nextHtml = "";
-    if (last.nextDate) {
-      const color = st.status === "overdue" ? "var(--red)" : st.status === "soon" ? "var(--peach)" : "var(--mint)";
-      const txt = st.status === "overdue" ? `Atrasado há ${st.days} dia${st.days === 1 ? "" : "s"}` : st.status === "soon" ? `Em ${st.days} dia${st.days === 1 ? "" : "s"}` : `Próxima em ${fmtDate(last.nextDate)}`;
-      nextHtml = `<hr class="record-divider"><div class="record-next" style="color:${color}">${ICONS.calendar} ${txt}</div>`;
-    }
-    div.innerHTML = `
-      <div class="record-stamp"><span class="d">${pad(parseISODate(last.date).getDate())}</span><span class="m">${MONTHS_ABBR[parseISODate(last.date).getMonth()]}</span></div>
-      <div class="record-body">
-        <h4>${escapeHtml(group.title)}</h4>
-        ${statusHtml}
-        ${nextHtml}
-      </div>
-      <span class="chevron">${ICONS.chevronRight}</span>`;
-    div.addEventListener("click", () => openVaccineGroupHistory(pet.id, group));
-    return div;
+function renderVaccineGroupRow(group, pet) {
+  const last = group.records[group.records.length - 1];
+  const st = dueStatus(last.nextDate);
+  const div = document.createElement("div");
+  div.className = "record";
+  div.style.cursor = "pointer";
+  let statusHtml = `<span class="sub">${group.records.length} dose${group.records.length === 1 ? "" : "s"} · última em ${fmtDate(last.date)}</span>`;
+  let nextHtml = "";
+  if (last.nextDate) {
+    const color = st.status === "overdue" ? "var(--red)" : st.status === "soon" ? "var(--peach)" : "var(--mint)";
+    const txt = st.status === "overdue" ? `Atrasado há ${st.days} dia${st.days === 1 ? "" : "s"}` : st.status === "soon" ? `Em ${st.days} dia${st.days === 1 ? "" : "s"}` : `Próxima em ${fmtDate(last.nextDate)}`;
+    nextHtml = `
+      <hr class="record-divider">
+      <div class="record-next" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <span style="color:${color}">${ICONS.calendar} ${txt}</span>
+        <button class="btn btn-sm btn-secondary cal-btn" style="padding:5px 8px;font-size:14px;flex-shrink:0" aria-label="Agendar no calendário">📅</button>
+      </div>`;
   }
+  div.innerHTML = `
+    <div class="record-stamp"><span class="d">${pad(parseISODate(last.date).getDate())}</span><span class="m">${MONTHS_ABBR[parseISODate(last.date).getMonth()]}</span></div>
+    <div class="record-body" style="flex:1">
+      <h4>${escapeHtml(group.title)}</h4>
+      ${statusHtml}
+      ${nextHtml}
+    </div>
+    <span class="chevron">${ICONS.chevronRight}</span>`;
+  div.querySelector(".record-body").addEventListener("click", (e) => {
+    if (e.target.closest(".cal-btn")) return;
+    openVaccineGroupHistory(pet.id, group);
+  });
+  div.querySelector(".chevron").addEventListener("click", () => openVaccineGroupHistory(pet.id, group));
+  const calBtn = div.querySelector(".cal-btn");
+  if (calBtn) {
+    calBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openCalendarModal(pet.name, group.title, last.nextDate, "");
+    });
+  }
+  return div;
+}
 
   function openVaccineGroupHistory(petId, group) {
     const last = group.records[group.records.length - 1];
@@ -1017,39 +1106,53 @@
   }
 
 
-  function renderRecordCard(rec, cfg, category, petId, isLatest) {
-    const div = document.createElement("div");
-    div.className = "record";
-    const d = parseISODate(rec.date);
-    const st = dueStatus(rec.nextDate);
-    const title = cfg.getTitle ? cfg.getTitle(rec) : (rec[cfg.primaryKey] || cfg.title);
-    const badge = cfg.getBadge ? cfg.getBadge(rec) : null;
-    let nextHtml = "";
-    if (rec.nextDate && isLatest !== false) {
-      const color = st.status === "overdue" ? "var(--red)" : st.status === "soon" ? "var(--peach)" : "var(--mint)";
-      const txt = st.status === "overdue" ? `Atrasado há ${st.days} dia${st.days === 1 ? "" : "s"}` : st.status === "soon" ? `Em ${st.days} dia${st.days === 1 ? "" : "s"} (${fmtDate(rec.nextDate)})` : `Próxima em ${fmtDate(rec.nextDate)}`;
-      nextHtml = `<hr class="record-divider"><div class="record-next" style="color:${color}">${ICONS.calendar} ${txt}</div>`;
-    } else if (rec.nextDate && isLatest === false) {
-      nextHtml = `<hr class="record-divider"><div class="record-next" style="color:var(--text-faint)">${ICONS.check} Substituída por um registro mais novo</div>`;
-    }
-    div.innerHTML = `
-      <div class="record-stamp"><span class="d">${pad(d.getDate())}</span><span class="m">${MONTHS_ABBR[d.getMonth()]}</span></div>
-      <div class="record-body">
-        <h4>${escapeHtml(title)}</h4>
-        <div class="sub">${fmtDate(rec.date)}${badge ? " · " + escapeHtml(badge) : ""}</div>
-        ${rec.notes ? `<div class="sub">${escapeHtml(rec.notes)}</div>` : ""}
-        ${nextHtml}
-      </div>
-      ${rec.photo ? `<img class="record-thumb" src="${rec.photo}" alt="Etiqueta">` : ""}
-      <button class="record-menu-btn" aria-label="Editar">${ICONS.dots}</button>`;
-    if (rec.photo) {
-      div.querySelector(".record-thumb").addEventListener("click", (e) => { e.stopPropagation(); showLightbox(rec.photo); });
-    }
-    const openEdit = () => (category === "vaccine" ? openVaccineForm(petId, rec) : openRecordForm(category, petId, rec));
-    div.querySelector(".record-menu-btn").addEventListener("click", openEdit);
-    div.querySelector(".record-body").addEventListener("click", openEdit);
-    return div;
+function renderRecordCard(rec, cfg, category, petId, isLatest) {
+  const div = document.createElement("div");
+  div.className = "record";
+  const d = parseISODate(rec.date);
+  const st = dueStatus(rec.nextDate);
+  const title = cfg.getTitle ? cfg.getTitle(rec) : (rec[cfg.primaryKey] || cfg.title);
+  const badge = cfg.getBadge ? cfg.getBadge(rec) : null;
+  const pet = getPet(petId);
+  let nextHtml = "";
+  if (rec.nextDate && isLatest !== false) {
+    const color = st.status === "overdue" ? "var(--red)" : st.status === "soon" ? "var(--peach)" : "var(--mint)";
+    const txt = st.status === "overdue" ? `Atrasado há ${st.days} dia${st.days === 1 ? "" : "s"}` : st.status === "soon" ? `Em ${st.days} dia${st.days === 1 ? "" : "s"} (${fmtDate(rec.nextDate)})` : `Próxima em ${fmtDate(rec.nextDate)}`;
+    nextHtml = `
+      <hr class="record-divider">
+      <div class="record-next" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <span style="color:${color}">${ICONS.calendar} ${txt}</span>
+        <button class="btn btn-sm btn-secondary cal-btn" style="padding:5px 8px;font-size:14px;flex-shrink:0" aria-label="Agendar no calendário">📅</button>
+      </div>`;
+  } else if (rec.nextDate && isLatest === false) {
+    nextHtml = `<hr class="record-divider"><div class="record-next" style="color:var(--text-faint)">${ICONS.check} Substituída por um registro mais novo</div>`;
   }
+  div.innerHTML = `
+    <div class="record-stamp"><span class="d">${pad(d.getDate())}</span><span class="m">${MONTHS_ABBR[d.getMonth()]}</span></div>
+    <div class="record-body">
+      <h4>${escapeHtml(title)}</h4>
+      <div class="sub">${fmtDate(rec.date)}${badge ? " · " + escapeHtml(badge) : ""}</div>
+      ${rec.notes ? `<div class="sub">${escapeHtml(rec.notes)}</div>` : ""}
+      ${nextHtml}
+    </div>
+    ${rec.photo ? `<img class="record-thumb" src="${rec.photo}" alt="Etiqueta">` : ""}
+    <button class="record-menu-btn" aria-label="Editar">${ICONS.dots}</button>`;
+  if (rec.photo) {
+    div.querySelector(".record-thumb").addEventListener("click", (e) => { e.stopPropagation(); showLightbox(rec.photo); });
+  }
+  const openEdit = () => (category === "vaccine" ? openVaccineForm(petId, rec) : openRecordForm(category, petId, rec));
+  div.querySelector(".record-menu-btn").addEventListener("click", openEdit);
+  div.querySelector(".record-body h4").addEventListener("click", openEdit);
+  div.querySelector(".record-body .sub") && div.querySelector(".record-body .sub").addEventListener("click", openEdit);
+  const calBtn = div.querySelector(".cal-btn");
+  if (calBtn) {
+    calBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openCalendarModal(pet ? pet.name : "", title, rec.nextDate, rec.notes || "");
+    });
+  }
+  return div;
+}
 
   function renderWeightTab(content, pet) {
     const list = recordsFor(pet.id, "weight"); // desc
@@ -1450,23 +1553,30 @@
     return div;
   }
 
-  function renderReminderRow(it) {
-    const { pet, rec, cfg, st } = it;
-    const div = document.createElement("div");
-    div.className = "pet-card";
-    const color = st.status === "overdue" ? "var(--red)" : st.status === "soon" ? "var(--peach)" : "var(--mint)";
-    const txt = st.status === "overdue" ? `Atrasado há ${st.days}d` : st.status === "soon" ? `Em ${st.days}d` : `Em ${st.days}d`;
-    const title = cfg.getTitle ? cfg.getTitle(rec) : (rec[cfg.primaryKey] || cfg.title);
-    div.innerHTML = `
-      ${pet.photo ? `<img class="pet-avatar" style="width:46px;height:46px" src="${pet.photo}" alt="">` : `<div class="pet-avatar placeholder" style="width:46px;height:46px">${pet.species === "cat" ? ICONS.cat : ICONS.dog}</div>`}
-      <div class="pet-card-info">
-        <h3 style="font-size:15px">${escapeHtml(title)}</h3>
-        <div class="meta">${escapeHtml(pet.name)} · ${cfg.title} · ${fmtDate(rec.nextDate)}</div>
-      </div>
-      <span class="chip" style="background:transparent;color:${color};font-weight:800">${txt}</span>`;
-    div.addEventListener("click", () => navigate(`#/pet/${pet.id}/${rec.category}`));
-    return div;
-  }
+function renderReminderRow(it) {
+  const { pet, rec, cfg, st } = it;
+  const div = document.createElement("div");
+  div.className = "pet-card";
+  const color = st.status === "overdue" ? "var(--red)" : st.status === "soon" ? "var(--peach)" : "var(--mint)";
+  const txt = st.status === "overdue" ? `Atrasado há ${st.days}d` : st.status === "soon" ? `Em ${st.days}d` : `Em ${st.days}d`;
+  const title = cfg.getTitle ? cfg.getTitle(rec) : (rec[cfg.primaryKey] || cfg.title);
+  div.innerHTML = `
+    ${pet.photo ? `<img class="pet-avatar" style="width:46px;height:46px" src="${pet.photo}" alt="">` : `<div class="pet-avatar placeholder" style="width:46px;height:46px">${pet.species === "cat" ? ICONS.cat : ICONS.dog}</div>`}
+    <div class="pet-card-info" style="cursor:pointer">
+      <h3 style="font-size:15px">${escapeHtml(title)}</h3>
+      <div class="meta">${escapeHtml(pet.name)} · ${cfg.title} · ${fmtDate(rec.nextDate)}</div>
+    </div>
+    <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
+      <span class="chip" style="background:transparent;color:${color};font-weight:800">${txt}</span>
+      <button class="btn btn-sm btn-secondary cal-btn" aria-label="Agendar no calendário" style="padding:6px 8px;font-size:16px">📅</button>
+    </div>`;
+  div.querySelector(".pet-card-info").addEventListener("click", () => navigate(`#/pet/${pet.id}/${rec.category}`));
+  div.querySelector(".cal-btn").addEventListener("click", (e) => {
+    e.stopPropagation();
+    openCalendarModal(pet.name, title, rec.nextDate, rec.notes || "");
+  });
+  return div;
+}
 
   /* ================================ AJUSTES ==================================== */
   function renderSettings(main) {

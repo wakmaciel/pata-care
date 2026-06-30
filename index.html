@@ -334,40 +334,94 @@ canvas#weightChart{ width:100%; height: 140px; display:block; }
 .sheet-overlay{
   position: fixed; inset:0; background: rgba(58,34,54,.45); z-index: 100;
   display:flex; align-items:flex-end; justify-content:center;
-  overflow-x: hidden; touch-action: pan-y;
+  overflow: hidden; touch-action: pan-y;
   animation: fadein2 .18s ease;
 }
 @keyframes fadein2{ from{opacity:0;} to{opacity:1;} }
 .sheet{
-  background: var(--bg); width:100%; max-width: 560px; max-height: 92vh; overflow-y:auto; overflow-x:hidden;
+  /* Tamanho: nunca ultrapassa 100vw, nunca menor que a viewport */
+  background: var(--bg);
+  width: 100%; max-width: min(560px, 100vw);
+  max-height: 92vh;
+  overflow-y: auto; overflow-x: hidden;
   -webkit-overflow-scrolling: touch; overscroll-behavior: contain; touch-action: pan-y;
-  border-radius: 26px 26px 0 0; padding: 10px 20px calc(26px + var(--safe-bottom));
+  border-radius: 26px 26px 0 0;
+  padding: 10px 20px calc(26px + var(--safe-bottom));
+  box-sizing: border-box;
   box-shadow: var(--shadow-lg); animation: slideup .22s cubic-bezier(.2,.8,.3,1);
+  /* Impede que qualquer filho expanda a largura */
+  contain: layout style;
 }
 @keyframes slideup{ from{ transform: translateY(100%); } to{ transform: translateY(0); } }
 .sheet-handle{ width:40px; height:5px; background: var(--border); border-radius: 4px; margin: 6px auto 14px; }
 .sheet-header{ display:flex; align-items:center; justify-content:space-between; margin-bottom: 16px; }
-.sheet-header h3{ font-size:19px; }
+.sheet-header h3{ font-size:19px; min-width:0; word-break:break-word; }
 
-.field{ margin-bottom: 14px; min-width:0; }
+.field{ margin-bottom: 14px; min-width:0; width:100%; }
 .field label{ display:block; font-size: 13px; font-weight:700; color: var(--text-muted); margin-bottom:6px; }
-.field input[type=text], .field input[type=number], .field input[type=date], .field input[type=time], .field input[type=datetime-local], .field select, .field textarea{
-  width:100%; padding: 12px 14px; border-radius: var(--radius-sm); border:1.5px solid var(--border);
-  background: var(--surface); color: var(--text); font-size:16px; outline:none;
+/* Todos os inputs: nunca ultrapassam a largura do pai */
+.field input[type=text],
+.field input[type=number],
+.field input[type=date],
+.field input[type=time],
+.field input[type=datetime-local],
+.field select,
+.field textarea{
+  display: block;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 16px;
+  outline: none;
+  box-sizing: border-box;
+  /* Impede que o picker de data do iOS expanda o input */
+  -webkit-appearance: none;
+  appearance: none;
+}
+/* Reaplica o estilo nativo apenas para campos que não são date/time (para manter a UI do picker) */
+.field input[type=text],
+.field input[type=number],
+.field textarea{
+  -webkit-appearance: none; appearance: none;
+}
+/* Para date/time/datetime, mantemos -webkit-appearance: none mas adicionamos ícone manual */
+.field input[type=date],
+.field input[type=time],
+.field input[type=datetime-local]{
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238C6677' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'><rect x='3.5' y='5' width='17' height='15.5' rx='2'/><path d='M3.5 9.5h17M8 3v3.5M16 3v3.5'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 18px;
+  padding-right: 40px;
+  cursor: pointer;
 }
 .field select{
-  -webkit-appearance:none; appearance:none;
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238C6677' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>");
   background-repeat: no-repeat; background-position: right 12px center; background-size: 18px; padding-right: 38px;
 }
 .field input:focus, .field select:focus, .field textarea:focus{ border-color: var(--pink); }
-.field textarea{ resize: vertical; min-height: 64px; }
-.seg{ display:flex; gap:8px; }
+.field textarea{ resize: vertical; min-height: 64px; -webkit-appearance: none; }
+/* seg: botões equalizam entre si mas nunca transbordam */
+.seg{ display:flex; gap:6px; width:100%; }
 .seg button{
-  flex:1; padding: 11px; border-radius: var(--radius-sm); border: 1.5px solid var(--border);
-  background: var(--surface); color: var(--text-muted); font-weight:700; cursor:pointer; font-size:14px;
+  flex:1; min-width:0;
+  padding: 11px 6px;
+  border-radius: var(--radius-sm); border: 1.5px solid var(--border);
+  background: var(--surface); color: var(--text-muted); font-weight:700; cursor:pointer; font-size:13.5px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  box-sizing: border-box;
 }
 .seg button.active{ background: var(--pink); border-color: var(--pink); color:#fff; }
+/* seg-sm: 5 opções (formulário de forma de medicamento) */
+.seg.seg-sm button{
+  font-size: 12.5px;
+  padding: 11px 3px;
+}
 .photo-upload{
   display:flex; align-items:center; gap:12px; padding: 10px; border: 1.5px dashed var(--border);
   border-radius: var(--radius-md); cursor:pointer; background: var(--surface);
@@ -378,8 +432,8 @@ canvas#weightChart{ width:100%; height: 140px; display:block; }
   display:flex; align-items:center; justify-content:center; flex-shrink:0;
 }
 .photo-upload .ph-icon svg{ width:22px; height:22px; stroke: var(--pink-strong); fill:none; }
-.photo-upload .txt{ font-size: 13.5px; color: var(--text-muted); font-weight:600; }
-.field-row{ display:flex; gap:10px; min-width:0; }
+.photo-upload .txt{ font-size: 13.5px; color: var(--text-muted); font-weight:600; min-width:0; }
+.field-row{ display:flex; gap:10px; min-width:0; width:100%; }
 .field-row > .field{ flex:1; min-width:0; }
 
 .toast{

@@ -1734,15 +1734,15 @@
         <label>Nome</label>
         <input type="text" id="f-name" placeholder="Ex: Mel, Thor, Luna..." value="${existing ? escapeHtml(existing.name) : ""}">
       </div>
-      <div class="field-row">
-        <div class="field">
-          <label>Espécie</label>
-          <div class="seg" id="seg-species">
-            <button data-v="dog" type="button">Cão</button>
-            <button data-v="cat" type="button">Gato</button>
-            <button data-v="other" type="button">Outro</button>
-          </div>
+      <div class="field">
+        <label>Espécie</label>
+        <div class="seg" id="seg-species">
+          <button data-v="dog" type="button">Cão</button>
+          <button data-v="cat" type="button">Gato</button>
+          <button data-v="other" type="button">Outro</button>
         </div>
+      </div>
+      <div class="field-row">
         <div class="field">
           <label>Sexo</label>
           <div class="seg" id="seg-sex">
@@ -1750,23 +1750,21 @@
             <button data-v="F" type="button">Fêmea</button>
           </div>
         </div>
+        <div class="field">
+          <label>Castrado(a)?</label>
+          <div class="seg" id="seg-neutered">
+            <button data-v="0" type="button">Não</button>
+            <button data-v="1" type="button">Sim</button>
+          </div>
+        </div>
       </div>
       <div class="field">
-        <label>Castrado(a)?</label>
-        <div class="seg" id="seg-neutered">
-          <button data-v="0" type="button">Não</button>
-          <button data-v="1" type="button">Sim</button>
-        </div>
+        <label>Raça</label>
+        <input type="text" id="f-breed" placeholder="Ex: SRD, Poodle..." value="${existing ? escapeHtml(existing.breed || "") : ""}">
       </div>
-      <div class="field-row">
-        <div class="field">
-          <label>Raça</label>
-          <input type="text" id="f-breed" placeholder="Ex: SRD, Poodle..." value="${existing ? escapeHtml(existing.breed || "") : ""}">
-        </div>
-        <div class="field">
-          <label>Nascimento</label>
-          <input type="date" id="f-birth" value="${existing ? existing.birthDate || "" : ""}">
-        </div>
+      <div class="field">
+        <label>Data de nascimento</label>
+        <input type="date" id="f-birth" value="${existing ? existing.birthDate || "" : ""}">
       </div>
       <div class="field">
         <label>Observações</label>
@@ -2134,27 +2132,27 @@
         <datalist id="dl-mf-name">${distinctValues("medication", "name").map((s) => `<option value="${escapeHtml(s)}"></option>`).join("")}</datalist>
       </div>
       <div class="field">
-        <label>Forma</label>
-        <div class="seg" id="mf-form">
-          <button data-v="comprimido" type="button">Comprimido</button>
-          <button data-v="gota" type="button">Gota</button>
-          <button data-v="liquido" type="button">Líquido</button>
-          <button data-v="injecao" type="button">Injeção</button>
-          <button data-v="outro" type="button">Outro</button>
-        </div>
+        <label>Forma de administração</label>
+        <select id="mf-form">
+          <option value="comprimido">Comprimido</option>
+          <option value="gota">Gota</option>
+          <option value="liquido">Líquido (ml)</option>
+          <option value="injecao">Injeção</option>
+          <option value="outro">Outra</option>
+        </select>
       </div>
       <div class="field-row">
         <div class="field">
-          <label>Quantidade por dose</label>
+          <label>Qtd. por dose</label>
           <input type="number" id="mf-amount" step="0.5" placeholder="Ex: 1" value="${existing ? existing.doseAmount : "1"}">
         </div>
         <div class="field">
-          <label>De quantas em quantas horas</label>
+          <label>A cada (horas)</label>
           <input type="number" id="mf-freq" step="1" placeholder="Ex: 8" value="${existing ? existing.frequencyHours : "8"}">
         </div>
       </div>
       <div class="field">
-        <label>Início (data e hora da 1ª dose)</label>
+        <label>Início — data e hora da 1ª dose</label>
         <input type="datetime-local" id="mf-start" value="${startVal}">
       </div>
       <div class="field-row">
@@ -2175,11 +2173,7 @@
       ${isEdit ? `<button class="btn btn-danger btn-block" id="mf-delete" style="margin-top:10px">${ICONS.trash} Excluir medicamento</button>` : ""}
     `);
 
-    function setSeg(value) {
-      sheet.querySelectorAll("#mf-form button").forEach((b) => b.classList.toggle("active", b.dataset.v === value));
-    }
-    setSeg(existing ? existing.form : "comprimido");
-    sheet.querySelectorAll("#mf-form button").forEach((b) => b.addEventListener("click", () => setSeg(b.dataset.v)));
+    sheet.querySelector('#mf-form').value = existing ? existing.form : "comprimido";
 
     if (!isEdit) {
       sheet.querySelector("#mf-name").addEventListener("change", (e) => {
@@ -2187,7 +2181,7 @@
         const prev = STATE.records.filter((r) => r.category === "medication" && r.name === typed)
           .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))[0];
         if (!prev) return;
-        setSeg(prev.form);
+        sheet.querySelector("#mf-form").value = prev.form;
         sheet.querySelector("#mf-amount").value = prev.doseAmount;
         sheet.querySelector("#mf-freq").value = prev.frequencyHours;
         toast("Preenchido com base no último uso de " + typed);
@@ -2211,7 +2205,7 @@
     sheet.querySelector("#sheet-close").addEventListener("click", closeSheet);
     sheet.querySelector("#mf-save").addEventListener("click", async () => {
       const name = sheet.querySelector("#mf-name").value.trim();
-      const form = sheet.querySelector("#mf-form .active").dataset.v;
+      const form = sheet.querySelector("#mf-form").value;
       const doseAmount = parseFloat(sheet.querySelector("#mf-amount").value);
       const frequencyHours = parseFloat(sheet.querySelector("#mf-freq").value);
       const startDateTimeLocal = sheet.querySelector("#mf-start").value;

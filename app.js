@@ -385,7 +385,7 @@
       const titles = { home: "Meus Pets", reminders: "Lembretes", settings: "Ajustes" };
       bar.innerHTML = `
         <div class="brand">
-          <span class="logo-dot"><img src="icons/icon-192.png" alt="PataCare"></span>
+          <span class="logo-dot"><img src="icons/favicon-192.png" alt="PataCare"></span>
           <h1>${titles[route.view] || "PataCare"}</h1>
         </div>
         <div class="topbar-actions"></div>`;
@@ -443,7 +443,7 @@
     if (pets.length === 0) {
       main.innerHTML = `
         <div class="empty-state">
-          <div class="paw-stack"><img src="icons/icon-192.png" alt="" style="width:64px;height:64px;border-radius:18px;opacity:.9;box-shadow:var(--shadow-sm)"></div>
+          <div class="paw-stack"><img src="icons/favicon-192.png" alt="" style="width:64px;height:64px;opacity:.9;box-shadow:var(--shadow-sm);border-radius:50%"></div>
           <h3>Nenhum pet por aqui ainda</h3>
           <p>Cadastre seu primeiro companheiro para começar a registrar vacinas, antipulgas, vermífugos e muito mais.</p>
           <button class="btn btn-primary" id="btn-add-first">${ICONS.plus} Adicionar pet</button>

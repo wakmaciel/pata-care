@@ -2,7 +2,7 @@
    Estratégia: cache-first para o "casco" do app (HTML/CSS/JS/ícones).
    Os dados dos pets ficam no IndexedDB, que o service worker não precisa tocar. */
 
-const CACHE_NAME = "patacare-cache-v1";
+const CACHE_NAME = "patacare-cache-v2";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -10,7 +10,9 @@ const APP_SHELL = [
   "./manifest.json",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
-  "./icons/apple-touch-icon.png"
+  "./icons/apple-touch-icon.png",
+  "./icons/favicon-32.png",
+  "./icons/favicon-192.png"
 ];
 
 self.addEventListener("install", (event) => {

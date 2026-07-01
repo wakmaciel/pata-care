@@ -1015,14 +1015,17 @@
         emptyTitle: "Nenhum exame registrado",
         emptyText: "Toque no + para registrar um exame (raio-X, ultrassom, sangue...) e anexar os resultados (imagens ou PDF).",
         getTitle: (rec) => rec.examType || "Exame",
-        getBadge: (rec) => rec.vet ? rec.vet : null
+        getBadge: (rec) => rec.vet ? (rec.crm ? `${rec.vet} · CRMV ${rec.crm}` : rec.vet) : null
       },
       consultation: {
         label: "consulta", title: "Consulta", icon: "stethoscope", hasPhoto: false,
         emptyTitle: "Nenhuma consulta registrada",
         emptyText: "Toque no + para registrar uma consulta com o médico-veterinário.",
         getTitle: (rec) => rec.vet ? `Consulta — ${rec.vet}` : "Consulta",
-        getBadge: (rec) => rec.reason || null
+        getBadge: (rec) => {
+          const crmTxt = rec.crm ? `CRMV ${rec.crm}` : null;
+          return [crmTxt, rec.reason].filter(Boolean).join(" · ") || null;
+        }
       }
     };
     return CFG[category];
@@ -1938,11 +1941,11 @@ function renderReminderRow(it) {
       return [escapeHtml(m.name), nw(`${m.doseAmount} ${escapeHtml(m.doseUnit || "")} a cada ${m.frequencyHours}h`), nw(progress)];
     });
     const consultRows = consultations.map((r) => [
-      nw(fmtDate(r.date)), escapeHtml(r.vet || "—"), escapeHtml(r.reason || "—"),
+      nw(fmtDate(r.date)), escapeHtml(r.vet || "—") + (r.crm ? ` <span style="white-space:nowrap;color:#999">(CRMV ${escapeHtml(r.crm)})</span>` : ""), escapeHtml(r.reason || "—"),
       nw(r.hasReturn && r.nextDate ? fmtDate(r.nextDate) : "—")
     ]);
     const examRows = exams.map((r) => [
-      escapeHtml(r.examType || "Exame"), nw(fmtDate(r.date)), escapeHtml(r.vet || "—"),
+      escapeHtml(r.examType || "Exame"), nw(fmtDate(r.date)), escapeHtml(r.vet || "—") + (r.crm ? ` <span style="white-space:nowrap;color:#999">(CRMV ${escapeHtml(r.crm)})</span>` : ""),
       nw(r.attachments && r.attachments.length ? `${r.attachments.length} anexo${r.attachments.length === 1 ? "" : "s"} (ver no app)` : "—")
     ]);
 
@@ -2437,10 +2440,17 @@ function renderReminderRow(it) {
         <label>Data do exame</label>
         <input type="date" id="ex-date" value="${existing ? existing.date : today}">
       </div>
-      <div class="field">
-        <label>Veterinário(a)/Clínica (opcional)</label>
-        <input type="text" list="dl-exam-vet" id="ex-vet" autocomplete="off" placeholder="Ex: Dra. Ana Souza / Clínica PetVida" value="${existing ? escapeHtml(existing.vet || "") : ""}">
-        <datalist id="dl-exam-vet">${distinctValues("exam", "vet").map((s) => `<option value="${escapeHtml(s)}"></option>`).join("")}</datalist>
+      <div class="field-row">
+        <div class="field">
+          <label>Veterinário(a)/Clínica (opcional)</label>
+          <input type="text" list="dl-exam-vet" id="ex-vet" autocomplete="off" placeholder="Ex: Dra. Ana Souza / Clínica PetVida" value="${existing ? escapeHtml(existing.vet || "") : ""}">
+          <datalist id="dl-exam-vet">${distinctValues("exam", "vet").map((s) => `<option value="${escapeHtml(s)}"></option>`).join("")}</datalist>
+        </div>
+        <div class="field" style="max-width:130px">
+          <label>CRMV (opcional)</label>
+          <input type="text" list="dl-exam-crm" id="ex-crm" autocomplete="off" placeholder="Ex: SP-12345" value="${existing ? escapeHtml(existing.crm || "") : ""}">
+          <datalist id="dl-exam-crm">${distinctValues("exam", "crm").map((s) => `<option value="${escapeHtml(s)}"></option>`).join("")}</datalist>
+        </div>
       </div>
       <div class="field">
         <label>Resultado / Observações</label>
@@ -2463,12 +2473,13 @@ function renderReminderRow(it) {
       const examType = sheet.querySelector("#ex-type").value.trim();
       const date = sheet.querySelector("#ex-date").value;
       const vet = sheet.querySelector("#ex-vet").value.trim();
+      const crm = sheet.querySelector("#ex-crm").value.trim();
       const notes = sheet.querySelector("#ex-notes").value.trim();
       if (!examType) { toast("Informe o tipo de exame"); return; }
       if (!date) { toast("Informe a data do exame"); return; }
 
       const rec = existing ? Object.assign({}, existing) : { id: uid(), petId, category: "exam", createdAt: Date.now() };
-      Object.assign(rec, { examType, date, vet, notes, attachments: attachCtrl.getAttachments() });
+      Object.assign(rec, { examType, date, vet, crm, notes, attachments: attachCtrl.getAttachments() });
       await dbPut("records", rec);
       await loadAll();
       closeSheet();
@@ -2505,10 +2516,17 @@ function renderReminderRow(it) {
         <label>Data da consulta</label>
         <input type="date" id="co-date" value="${existing ? existing.date : today}">
       </div>
-      <div class="field">
-        <label>Veterinário(a)/Dr(a).</label>
-        <input type="text" list="dl-co-vet" id="co-vet" autocomplete="off" placeholder="Ex: Dr. João Lima" value="${existing ? escapeHtml(existing.vet || "") : ""}">
-        <datalist id="dl-co-vet">${distinctValues("consultation", "vet").map((s) => `<option value="${escapeHtml(s)}"></option>`).join("")}</datalist>
+      <div class="field-row">
+        <div class="field">
+          <label>Veterinário(a)/Dr(a).</label>
+          <input type="text" list="dl-co-vet" id="co-vet" autocomplete="off" placeholder="Ex: Dr. João Lima" value="${existing ? escapeHtml(existing.vet || "") : ""}">
+          <datalist id="dl-co-vet">${distinctValues("consultation", "vet").map((s) => `<option value="${escapeHtml(s)}"></option>`).join("")}</datalist>
+        </div>
+        <div class="field" style="max-width:130px">
+          <label>CRMV (opcional)</label>
+          <input type="text" list="dl-co-crm" id="co-crm" autocomplete="off" placeholder="Ex: SP-12345" value="${existing ? escapeHtml(existing.crm || "") : ""}">
+          <datalist id="dl-co-crm">${distinctValues("consultation", "crm").map((s) => `<option value="${escapeHtml(s)}"></option>`).join("")}</datalist>
+        </div>
       </div>
       <div class="field">
         <label>Motivo da consulta (opcional)</label>
@@ -2544,6 +2562,7 @@ function renderReminderRow(it) {
     sheet.querySelector("#co-save").addEventListener("click", async () => {
       const date = sheet.querySelector("#co-date").value;
       const vet = sheet.querySelector("#co-vet").value.trim();
+      const crm = sheet.querySelector("#co-crm").value.trim();
       const reason = sheet.querySelector("#co-reason").value.trim();
       const notes = sheet.querySelector("#co-notes").value.trim();
       const hasReturn = sheet.querySelector("#co-has-return").checked;
@@ -2553,7 +2572,7 @@ function renderReminderRow(it) {
       if (hasReturn && !returnDate) { toast("Informe a data de retorno ou desative a opção"); return; }
 
       const rec = existing ? Object.assign({}, existing) : { id: uid(), petId, category: "consultation", createdAt: Date.now() };
-      Object.assign(rec, { date, vet, reason, notes, hasReturn, nextDate: hasReturn ? returnDate : null });
+      Object.assign(rec, { date, vet, crm, reason, notes, hasReturn, nextDate: hasReturn ? returnDate : null });
       await dbPut("records", rec);
       await loadAll();
       closeSheet();

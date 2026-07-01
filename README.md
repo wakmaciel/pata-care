@@ -8,6 +8,8 @@ Um app web (PWA) para gerenciar a saúde e os cuidados dos seus pets: vacinas (c
 - **Vacinas com previsão automática**: escolha o tipo (V8/V10, Antirrábica, Giárdia, Gripe canina, Leishmaniose, V3/V4/V5 felina, FeLV, ou personalizada) e o app já calcula a próxima dose sozinho, seguindo os esquemas de filhote (várias doses iniciais) e depois reforço anual — com uma linha do tempo visual por vacina, que pode ser desabilitada se não fizer sentido para o seu pet.
 - **Medicamentos**: registre nome, forma (comprimido, gota, líquido, injeção...), dose, de quantas em quantas horas e por quantos dias — o app monta a lista de doses automaticamente e você vai marcando "✓ aplicada" uma a uma, com contagem de progresso.
 - **Antipulgas e carrapatos** e **vermífugos**: produto aplicado, data e próxima aplicação.
+- **Consultas veterinárias**: registre data, veterinário(a)/Dr(a), motivo e observações/diagnóstico — com opção de habilitar uma data de retorno, que entra automaticamente nos Lembretes.
+- **Exames**: registre exames (raio-X, ultrassom, hemograma, etc.) com data, veterinário(a)/clínica e observações, anexando os resultados em imagem e/ou PDF.
 - **Peso**: histórico com gráfico de evolução e variação em relação ao registro anterior.
 - **Cio** (apenas para pets fêmeas): início, fim e intervalo médio entre os ciclos.
 - **Lembretes**: uma tela só com tudo que está atrasado ou vencendo (vacinas, antipulgas, vermífugos e doses de medicamento) de todos os pets — pode marcar a dose do remédio direto por ali.

@@ -44,7 +44,8 @@
     clipboard: '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4.5" width="14" height="17" rx="2"/><rect x="9" y="3" width="6" height="3.2" rx="1"/><path d="M8.5 11h7M8.5 14.5h7M8.5 18h4.5"/></svg>',
     stethoscope: '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4v6a4 4 0 0 0 8 0V4"/><path d="M6 4H4.5M14 4h1.5"/><path d="M18 12v2.5a5.5 5.5 0 0 1-11 0V13"/><circle cx="19.3" cy="11" r="1.7"/></svg>',
     paperclip: '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12.5l6.5-6.5a3 3 0 0 1 4.2 4.2L11.5 17.4a5 5 0 1 1-7-7L12 3"/></svg>',
-    file: '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.5h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-16a1 1 0 0 1 1-1Z"/><path d="M14 3.5V8h4"/></svg>'
+    file: '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.5h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-16a1 1 0 0 1 1-1Z"/><path d="M14 3.5V8h4"/></svg>',
+    scissors: '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6.3" r="2.3"/><circle cx="6" cy="17.7" r="2.3"/><path d="M7.8 7.8 19 17M7.8 16.2 19 7"/></svg>'
   };
 /* ── INTEGRAÇÃO CALENDÁRIO PETS ─────────────────────────────────────────── */
   // Nome exato do seu calendário no iPhone (sem emoji se não tiver)
@@ -640,6 +641,7 @@
       if (tab === "vaccine") action = () => openVaccineForm(route.petId, null);
       else if (tab === "medication") action = () => openMedicationForm(route.petId, null);
       else if (tab === "exam") action = () => openExamForm(route.petId, null);
+      else if (tab === "surgery") action = () => openSurgeryForm(route.petId, null);
       else if (tab === "consultation") action = () => openConsultationForm(route.petId, null);
       else if (tab === "heat") { if (!pet || !pet.neutered) action = () => openRecordForm("heat", route.petId, null); }
       else if (["antiparasitic", "dewormer", "weight"].includes(tab)) action = () => openRecordForm(tab, route.petId, null);
@@ -702,6 +704,7 @@
     { id: "vaccine", label: "Vacinas", icon: "syringe" },
     { id: "consultation", label: "Consultas", icon: "stethoscope" },
     { id: "exam", label: "Exames", icon: "clipboard" },
+    { id: "surgery", label: "Cirurgias", icon: "scissors" },
     { id: "medication", label: "Medicamentos", icon: "medkit" },
     { id: "antiparasitic", label: "Antipulgas/Carrapatos", icon: "bug" },
     { id: "dewormer", label: "Vermífugos", icon: "pill" },
@@ -754,6 +757,7 @@
     else if (tab === "antiparasitic") renderCareListTab(content, pet, "antiparasitic");
     else if (tab === "dewormer") renderCareListTab(content, pet, "dewormer");
     else if (tab === "exam") renderCareListTab(content, pet, "exam");
+    else if (tab === "surgery") renderCareListTab(content, pet, "surgery");
     else if (tab === "consultation") renderCareListTab(content, pet, "consultation");
     else if (tab === "weight") renderWeightTab(content, pet);
     else if (tab === "heat" && pet.sex === "F") renderHeatTab(content, pet);
@@ -825,6 +829,7 @@
     summary.appendChild(row("pill", "Vermífugos", derm, "dewormer", `#/pet/${pet.id}/dewormer`));
     summary.appendChild(row("stethoscope", "Consultas", recordsFor(pet.id, "consultation"), "consultation", `#/pet/${pet.id}/consultation`));
     summary.appendChild(row("clipboard", "Exames", recordsFor(pet.id, "exam"), "exam", `#/pet/${pet.id}/exam`));
+    summary.appendChild(row("scissors", "Cirurgias", recordsFor(pet.id, "surgery"), "surgery", `#/pet/${pet.id}/surgery`));
     const wr = document.createElement("div");
     wr.className = "settings-row"; wr.style.cursor = "pointer";
     wr.innerHTML = `<div class="ic">${ICONS.scale}</div><div class="lbl"><div class="t">Peso</div><span class="s">${lastWeight ? lastWeight.weight + " kg em " + fmtDate(lastWeight.date) : "Sem registros"}</span></div><span class="chevron">${ICONS.chevronRight}</span>`;
@@ -1017,6 +1022,13 @@
         getTitle: (rec) => rec.examType || "Exame",
         getBadge: (rec) => rec.vet ? (rec.crm ? `${rec.vet} · CRMV ${rec.crm}` : rec.vet) : null
       },
+      surgery: {
+        label: "cirurgia", title: "Cirurgia", icon: "scissors", hasPhoto: false,
+        emptyTitle: "Nenhuma cirurgia registrada",
+        emptyText: "Toque no + para registrar uma cirurgia (castração, remoção de nódulo...) e anexar fotos ou laudos.",
+        getTitle: (rec) => rec.surgeryType || "Cirurgia",
+        getBadge: (rec) => rec.vet ? (rec.crm ? `${rec.vet} · CRMV ${rec.crm}` : rec.vet) : null
+      },
       consultation: {
         label: "consulta", title: "Consulta", icon: "stethoscope", hasPhoto: false,
         emptyTitle: "Nenhuma consulta registrada",
@@ -1037,6 +1049,7 @@
     const openForm = (rec) => {
       if (category === "vaccine") return openVaccineForm(pet.id, rec);
       if (category === "exam") return openExamForm(pet.id, rec);
+      if (category === "surgery") return openSurgeryForm(pet.id, rec);
       if (category === "consultation") return openConsultationForm(pet.id, rec);
       return openRecordForm(category, pet.id, rec);
     };
@@ -1317,6 +1330,7 @@ function renderRecordCard(rec, cfg, category, petId, isLatest) {
   const openEdit = () => {
     if (category === "vaccine") return openVaccineForm(petId, rec);
     if (category === "exam") return openExamForm(petId, rec);
+    if (category === "surgery") return openSurgeryForm(petId, rec);
     if (category === "consultation") return openConsultationForm(petId, rec);
     return openRecordForm(category, petId, rec);
   };
@@ -1792,7 +1806,7 @@ function renderReminderRow(it) {
       const petOptions = `<option value="all">Todos os pets</option>` + STATE.pets.map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join("");
       vetCard.innerHTML = `
         <p style="font-size:13.5px;color:var(--text-muted);line-height:1.5;margin-bottom:14px">
-          Gere um resumo em PDF com vacinas, consultas, exames, antipulgas, vermífugos, peso e medicamentos — pronto para mostrar ou enviar ao médico-veterinário.
+          Gere um resumo em PDF com vacinas, consultas, exames, cirurgias, antipulgas, vermífugos, peso e medicamentos — pronto para mostrar ou enviar ao médico-veterinário.
         </p>
         <div class="field" style="margin-bottom:12px"><select id="vet-pet-select">${petOptions}</select></div>
         <button class="btn btn-primary btn-block" id="btn-vet-export">${ICONS.vet} Gerar relatório</button>`;
@@ -1916,6 +1930,7 @@ function renderReminderRow(it) {
     const meds = STATE.records.filter((r) => r.petId === pet.id && r.category === "medication");
     const consultations = recordsFor(pet.id, "consultation");
     const exams = recordsFor(pet.id, "exam");
+    const surgeries = recordsFor(pet.id, "surgery");
 
     function table(headers, rows) {
       if (rows.length === 0) return `<div class="empty">Nenhum registro.</div>`;
@@ -1948,6 +1963,10 @@ function renderReminderRow(it) {
       escapeHtml(r.examType || "Exame"), nw(fmtDate(r.date)), escapeHtml(r.vet || "—") + (r.crm ? ` <span style="white-space:nowrap;color:#999">(CRMV ${escapeHtml(r.crm)})</span>` : ""),
       nw(r.attachments && r.attachments.length ? `${r.attachments.length} anexo${r.attachments.length === 1 ? "" : "s"} (ver no app)` : "—")
     ]);
+    const surgeryRows = surgeries.map((r) => [
+      escapeHtml(r.surgeryType || "Cirurgia"), nw(fmtDate(r.date)), escapeHtml(r.vet || "—") + (r.crm ? ` <span style="white-space:nowrap;color:#999">(CRMV ${escapeHtml(r.crm)})</span>` : ""),
+      nw(r.attachments && r.attachments.length ? `${r.attachments.length} anexo${r.attachments.length === 1 ? "" : "s"} (ver no app)` : "—")
+    ]);
 
     return `
       <div class="pet-block">
@@ -1962,6 +1981,9 @@ function renderReminderRow(it) {
 
         <h3>Exames</h3>
         ${table(["Exame", "Data", "Veterinário(a)/Clínica", "Anexos"], examRows)}
+
+        <h3>Cirurgias</h3>
+        ${table(["Cirurgia", "Data", "Veterinário(a)/Clínica", "Anexos"], surgeryRows)}
 
         <h3>Antipulgas / Carrapatos</h3>
         ${table(["Produto", "Data", "Próxima aplicação"], antiRows)}
@@ -2582,6 +2604,120 @@ function renderReminderRow(it) {
 
     if (isEdit) {
       sheet.querySelector("#co-delete").addEventListener("click", async () => {
+        const ok = await confirmDialog({ title: "Excluir registro?", message: "Essa ação não pode ser desfeita.", confirmLabel: "Excluir", danger: true });
+        if (!ok) return;
+        await dbDelete("records", existing.id);
+        await loadAll();
+        closeSheet();
+        toast("Registro excluído");
+        render();
+      });
+    }
+  }
+
+  /* ========================== FORMULÁRIO: CIRURGIA =============================== */
+  const SURGERY_TYPE_SUGGESTIONS = ["Castração (Orquiectomia)", "Castração (Ovário-histerectomia)", "Remoção de nódulo/tumor", "Cirurgia ortopédica", "Cirurgia odontológica", "Cesariana", "Correção de hérnia", "Limpeza de tártaro com anestesia", "Outra"];
+  function isNeuterSurgeryType(s) {
+    const t = normalizeBreedText(s);
+    return /castr|orquiectomia|ovario.?histerectomia|ovariohisterectomia/.test(t);
+  }
+
+  function openSurgeryForm(petId, existing) {
+    const isEdit = !!existing;
+    const today = todayISO();
+    const pet = getPet(petId);
+    const petAlreadyNeutered = !!(pet && pet.neutered);
+    const surgerySuggestions = [...new Set([...SURGERY_TYPE_SUGGESTIONS, ...distinctValues("surgery", "surgeryType")])];
+    const markInitial = petAlreadyNeutered || (existing ? !!existing.markedNeutered : false);
+
+    const sheet = openSheetEl(`
+      <div class="sheet-handle"></div>
+      <div class="sheet-header">
+        <h3>${isEdit ? "Editar cirurgia" : "Nova cirurgia"}</h3>
+        <button class="icon-btn" id="sheet-close">${ICONS.close}</button>
+      </div>
+      <div class="field">
+        <label>Tipo de cirurgia</label>
+        <input type="text" list="dl-surgery-type" id="su-type" autocomplete="off" placeholder="Ex: Castração, remoção de nódulo..." value="${existing ? escapeHtml(existing.surgeryType || "") : ""}">
+        <datalist id="dl-surgery-type">${surgerySuggestions.map((s) => `<option value="${escapeHtml(s)}"></option>`).join("")}</datalist>
+      </div>
+      <div class="field">
+        <label>Data da cirurgia</label>
+        <input type="date" id="su-date" value="${existing ? existing.date : today}">
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Veterinário(a)/Clínica (opcional)</label>
+          <input type="text" list="dl-surgery-vet" id="su-vet" autocomplete="off" placeholder="Ex: Dr. Carlos Melo / Clínica VetBem" value="${existing ? escapeHtml(existing.vet || "") : ""}">
+          <datalist id="dl-surgery-vet">${distinctValues("surgery", "vet").map((s) => `<option value="${escapeHtml(s)}"></option>`).join("")}</datalist>
+        </div>
+        <div class="field" style="max-width:130px">
+          <label>CRMV (opcional)</label>
+          <input type="text" list="dl-surgery-crm" id="su-crm" autocomplete="off" placeholder="Ex: SP-12345" value="${existing ? escapeHtml(existing.crm || "") : ""}">
+          <datalist id="dl-surgery-crm">${distinctValues("surgery", "crm").map((s) => `<option value="${escapeHtml(s)}"></option>`).join("")}</datalist>
+        </div>
+      </div>
+      <div class="field">
+        <label>Observações / Cuidados pós-operatórios</label>
+        <textarea id="su-notes" placeholder="Recomendações, medicação pós-cirúrgica, retirada de pontos...">${existing ? escapeHtml(existing.notes || "") : ""}</textarea>
+      </div>
+      <div class="field">
+        <label>Fotos / Anexos (laudo, PDF...)</label>
+        <div id="rf-attach-list" class="attach-list"></div>
+        <button type="button" class="attach-add-btn" id="rf-attach-add">${ICONS.paperclip} Adicionar foto ou PDF</button>
+        <input type="file" accept="image/*,application/pdf" multiple class="visually-hidden" id="rf-attach-input">
+      </div>
+      <div class="switch-row" id="su-neuter-row" style="${petAlreadyNeutered ? "opacity:.6" : ""}">
+        <div>
+          <div class="lbl">Marcar pet como castrado(a)</div>
+          <div class="sub">${petAlreadyNeutered ? "Este pet já está marcado como castrado(a)" : "Atualiza o cadastro do pet automaticamente"}</div>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="su-mark-neutered" ${markInitial ? "checked" : ""} ${petAlreadyNeutered ? "disabled" : ""}>
+          <span class="track"></span>
+        </label>
+      </div>
+      <button class="btn btn-primary btn-block" id="su-save">${ICONS.check} Salvar</button>
+      ${isEdit ? `<button class="btn btn-danger btn-block" id="su-delete" style="margin-top:10px">${ICONS.trash} Excluir registro</button>` : ""}
+    `);
+
+    const attachCtrl = setupAttachmentField(sheet, existing ? existing.attachments : []);
+
+    // Sugere marcar automaticamente como castrado(a) quando o tipo digitado indica isso
+    sheet.querySelector("#su-type").addEventListener("input", (e) => {
+      if (petAlreadyNeutered) return;
+      const checkbox = sheet.querySelector("#su-mark-neutered");
+      if (isNeuterSurgeryType(e.target.value)) checkbox.checked = true;
+    });
+
+    sheet.querySelector("#sheet-close").addEventListener("click", closeSheet);
+    sheet.querySelector("#su-save").addEventListener("click", async () => {
+      const surgeryType = sheet.querySelector("#su-type").value.trim();
+      const date = sheet.querySelector("#su-date").value;
+      const vet = sheet.querySelector("#su-vet").value.trim();
+      const crm = sheet.querySelector("#su-crm").value.trim();
+      const notes = sheet.querySelector("#su-notes").value.trim();
+      const markedNeutered = sheet.querySelector("#su-mark-neutered").checked;
+      if (!surgeryType) { toast("Informe o tipo de cirurgia"); return; }
+      if (!date) { toast("Informe a data da cirurgia"); return; }
+
+      const rec = existing ? Object.assign({}, existing) : { id: uid(), petId, category: "surgery", createdAt: Date.now() };
+      Object.assign(rec, { surgeryType, date, vet, crm, notes, markedNeutered, attachments: attachCtrl.getAttachments() });
+      await dbPut("records", rec);
+
+      if (markedNeutered && pet && !pet.neutered) {
+        pet.neutered = true;
+        await dbPut("pets", pet);
+      }
+
+      await loadAll();
+      closeSheet();
+      toast(isEdit ? "Cirurgia atualizada!" : "Cirurgia registrada!");
+      render();
+    });
+
+    if (isEdit) {
+      sheet.querySelector("#su-delete").addEventListener("click", async () => {
         const ok = await confirmDialog({ title: "Excluir registro?", message: "Essa ação não pode ser desfeita.", confirmLabel: "Excluir", danger: true });
         if (!ok) return;
         await dbDelete("records", existing.id);

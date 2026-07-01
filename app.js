@@ -1872,6 +1872,54 @@ function renderReminderRow(it) {
       e.target.value = "";
     });
 
+    const driveTitle = document.createElement("div");
+    driveTitle.className = "section-title";
+    driveTitle.textContent = "Backup automático (Google Drive)";
+    main.appendChild(driveTitle);
+
+    const driveCard = document.createElement("div");
+    driveCard.className = "card";
+    const driveConnected = isDriveConnected();
+    const driveLast = getDriveLastBackup();
+    const driveLastText = driveLast ? `Último backup: ${new Date(driveLast).toLocaleString("pt-BR")}` : "Ainda sem backup enviado";
+
+    if (!isDriveConfigured()) {
+      driveCard.innerHTML = `<p style="font-size:13.5px;color:var(--text-muted);line-height:1.5">
+        Esse recurso ainda não foi configurado (falta o Client ID do Google no código). Veja o README do projeto para ativar em poucos minutos.
+      </p>`;
+    } else {
+      driveCard.innerHTML = `
+        <p style="font-size:13.5px;color:var(--text-muted);line-height:1.5;margin-bottom:14px">
+          Conecte sua conta Google para o PataCare enviar um backup para o Google Drive automaticamente sempre que você abrir o app (no máximo 1x por dia).
+        </p>
+        ${driveConnected ? `<p style="font-size:13px;color:var(--mint);margin-bottom:12px">✓ Conectado — ${escapeHtml(driveLastText)}</p>` : ""}
+        <button class="btn btn-primary btn-block" id="btn-drive-toggle" style="margin-bottom:10px">${driveConnected ? "Desconectar Google Drive" : `${ICONS.backup} Conectar Google Drive`}</button>
+        ${driveConnected ? `<button class="btn btn-secondary btn-block" id="btn-drive-now" style="margin-bottom:10px">Fazer backup agora</button>
+        <button class="btn btn-secondary btn-block" id="btn-drive-restore">Restaurar do Google Drive</button>` : ""}`;
+    }
+    main.appendChild(driveCard);
+
+    if (isDriveConfigured()) {
+      driveCard.querySelector("#btn-drive-toggle").addEventListener("click", async () => {
+        if (driveConnected) { await driveDisconnect(); } else { await driveConnect(); }
+        main.innerHTML = "";
+        renderSettings(main);
+      });
+      if (driveConnected) {
+        driveCard.querySelector("#btn-drive-now").addEventListener("click", async () => {
+          try {
+            await driveUploadBackup(false);
+            toast("Backup enviado ao Google Drive!");
+          } catch (err) {
+            toast("Não foi possível enviar o backup");
+          }
+          main.innerHTML = "";
+          renderSettings(main);
+        });
+        driveCard.querySelector("#btn-drive-restore").addEventListener("click", driveRestoreFlow);
+      }
+    }
+
     const dangerTitle = document.createElement("div");
     dangerTitle.className = "section-title";
     dangerTitle.textContent = "Zona de risco";
@@ -2034,9 +2082,195 @@ function renderReminderRow(it) {
       </div>`;
   }
 
+  /* ======================= BACKUP AUTOMÁTICO — GOOGLE DRIVE ======================
+     Como funciona: usamos o Google Identity Services (GIS) para autenticar no
+     navegador (sem servidor próprio) e a Drive API v3 com o escopo "drive.file",
+     que só dá acesso a arquivos/pastas que o próprio PataCare cria — nada além
+     disso é visível para o app.
+     O backup fica salvo numa pasta "PataCare Backups" no Google Drive do usuário,
+     num único arquivo que é sobrescrito a cada novo backup (não sensível, mesmo
+     não fica publicado/verificado pelo Google).
+     Troque GOOGLE_CLIENT_ID pelo Client ID gerado no Google Cloud Console. ------- */
+  const GOOGLE_CLIENT_ID = "696715565459-hs6qitu4aqok7410ual5agq54o4s7igo.apps.googleusercontent.com";
+  const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
+  const DRIVE_FOLDER_NAME = "PataCare Backups";
+  const DRIVE_FILE_NAME = "patacare-backup.json";
+  const DRIVE_CONNECTED_KEY = "patacare-drive-connected";
+  const DRIVE_LAST_BACKUP_KEY = "patacare-drive-last-backup";
+
+  let gTokenClient = null;
+  let gAccessToken = null;
+  let gTokenExpiresAt = 0;
+
+  function isDriveConfigured() {
+    return !!GOOGLE_CLIENT_ID && !GOOGLE_CLIENT_ID.startsWith("SEU_CLIENT_ID");
+  }
+  function isDriveConnected() {
+    return localStorage.getItem(DRIVE_CONNECTED_KEY) === "1";
+  }
+  function getDriveLastBackup() {
+    return localStorage.getItem(DRIVE_LAST_BACKUP_KEY);
+  }
+
+  function ensureGTokenClient() {
+    if (gTokenClient) return gTokenClient;
+    if (!window.google || !google.accounts || !google.accounts.oauth2) return null;
+    gTokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: GOOGLE_CLIENT_ID,
+      scope: DRIVE_SCOPE,
+      callback: () => {}, // sobrescrito a cada chamada de requestDriveToken
+    });
+    return gTokenClient;
+  }
+
+  function requestDriveToken(silent) {
+    return new Promise((resolve, reject) => {
+      const client = ensureGTokenClient();
+      if (!client) { reject(new Error("Google Identity Services ainda não carregou")); return; }
+      client.callback = (resp) => {
+        if (resp && resp.error) { reject(new Error(resp.error)); return; }
+        gAccessToken = resp.access_token;
+        gTokenExpiresAt = Date.now() + (Number(resp.expires_in) || 3500) * 1000;
+        resolve(gAccessToken);
+      };
+      try {
+        client.requestAccessToken({ prompt: silent ? "" : "consent" });
+      } catch (err) {
+        reject(err);
+      }
+    });
+  }
+
+  async function getDriveToken(silent) {
+    if (gAccessToken && Date.now() < gTokenExpiresAt - 30000) return gAccessToken;
+    return requestDriveToken(silent);
+  }
+
+  async function driveApiFetch(url, options, silent) {
+    const token = await getDriveToken(silent);
+    const res = await fetch(url, {
+      ...(options || {}),
+      headers: { ...((options && options.headers) || {}), Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`Drive API ${res.status}: ${text}`);
+    }
+    return res;
+  }
+
+  async function driveFindOrCreateFolder(silent) {
+    const q = encodeURIComponent(`name='${DRIVE_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
+    const listRes = await driveApiFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)`, {}, silent);
+    const listData = await listRes.json();
+    if (listData.files && listData.files.length > 0) return listData.files[0].id;
+    const createRes = await driveApiFetch(`https://www.googleapis.com/drive/v3/files`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: DRIVE_FOLDER_NAME, mimeType: "application/vnd.google-apps.folder" }),
+    }, silent);
+    const createData = await createRes.json();
+    return createData.id;
+  }
+
+  async function driveFindFile(folderId, silent) {
+    const q = encodeURIComponent(`name='${DRIVE_FILE_NAME}' and '${folderId}' in parents and trashed=false`);
+    const res = await driveApiFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,modifiedTime)`, {}, silent);
+    const data = await res.json();
+    return (data.files && data.files[0]) || null;
+  }
+
+  function buildBackupData() {
+    return { app: "patacare", version: 1, exportedAt: new Date().toISOString(), pets: STATE.pets, records: STATE.records };
+  }
+
+  async function driveUploadBackup(silent) {
+    const folderId = await driveFindOrCreateFolder(silent);
+    const existing = await driveFindFile(folderId, silent);
+    const data = buildBackupData();
+    const metadata = existing ? { name: DRIVE_FILE_NAME } : { name: DRIVE_FILE_NAME, parents: [folderId] };
+    const boundary = "patacare-" + Date.now();
+    const body =
+      `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n` +
+      `--${boundary}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(data)}\r\n` +
+      `--${boundary}--`;
+    const url = existing
+      ? `https://www.googleapis.com/upload/drive/v3/files/${existing.id}?uploadType=multipart`
+      : `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`;
+    await driveApiFetch(url, {
+      method: existing ? "PATCH" : "POST",
+      headers: { "Content-Type": `multipart/related; boundary=${boundary}` },
+      body,
+    }, silent);
+    localStorage.setItem(DRIVE_LAST_BACKUP_KEY, new Date().toISOString());
+  }
+
+  async function driveDownloadBackup(silent) {
+    const folderId = await driveFindOrCreateFolder(silent);
+    const existing = await driveFindFile(folderId, silent);
+    if (!existing) throw new Error("Nenhum backup encontrado no Google Drive ainda.");
+    const res = await driveApiFetch(`https://www.googleapis.com/drive/v3/files/${existing.id}?alt=media`, {}, silent);
+    return res.json();
+  }
+
+  async function driveConnect() {
+    try {
+      await getDriveToken(false); // abre o consentimento do Google
+      localStorage.setItem(DRIVE_CONNECTED_KEY, "1");
+      await driveUploadBackup(true);
+      toast("Google Drive conectado e backup enviado!");
+    } catch (err) {
+      toast("Não foi possível conectar ao Google Drive");
+    }
+  }
+
+  async function driveDisconnect() {
+    const ok = await confirmDialog({ title: "Desconectar Google Drive?", message: "O backup automático será desativado neste aparelho. O arquivo que já está salvo no seu Google Drive não será apagado.", confirmLabel: "Desconectar", danger: true });
+    if (!ok) return;
+    if (gAccessToken && window.google && google.accounts && google.accounts.oauth2) {
+      try { google.accounts.oauth2.revoke(gAccessToken, () => {}); } catch (err) {}
+    }
+    gAccessToken = null;
+    gTokenExpiresAt = 0;
+    localStorage.removeItem(DRIVE_CONNECTED_KEY);
+    toast("Google Drive desconectado");
+  }
+
+  async function driveRestoreFlow() {
+    try {
+      const data = await driveDownloadBackup(false);
+      if (!data || !Array.isArray(data.pets) || !Array.isArray(data.records)) throw new Error("formato inválido");
+      const ok = await confirmDialog({ title: "Restaurar do Google Drive?", message: "Isso vai substituir todos os dados atuais deste dispositivo pelos dados do backup salvo no Google Drive.", confirmLabel: "Restaurar e substituir", danger: true });
+      if (!ok) return;
+      await dbClear("pets"); await dbClear("records");
+      for (const p of data.pets) await dbPut("pets", p);
+      for (const r of data.records) await dbPut("records", r);
+      await loadAll();
+      toast("Dados restaurados do Google Drive!");
+      navigate("#/");
+    } catch (err) {
+      toast("Não foi possível restaurar do Google Drive");
+    }
+  }
+
+  // Chamado uma vez ao abrir o app: se já estiver conectado, faz backup silencioso
+  // (sem popup) no máximo uma vez por dia.
+  async function driveAutoBackupOnOpen() {
+    if (!isDriveConfigured() || !isDriveConnected()) return;
+    const last = getDriveLastBackup();
+    const today = new Date().toDateString();
+    if (last && new Date(last).toDateString() === today) return;
+    try {
+      await driveUploadBackup(true);
+    } catch (err) {
+      // Silencioso: se a sessão expirou ou não há rede, apenas não faz nada agora.
+      // O usuário pode tocar em "Fazer backup agora" nos Ajustes quando quiser.
+    }
+  }
+
   function exportBackup() {
     loadAll().then(() => {
-      const data = { app: "patacare", version: 1, exportedAt: new Date().toISOString(), pets: STATE.pets, records: STATE.records };
+      const data = buildBackupData();
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -3070,6 +3304,7 @@ function renderReminderRow(it) {
     loadAll().then(() => {
       render();
       registerServiceWorker();
+      driveAutoBackupOnOpen();
     }).catch((err) => {
       document.getElementById("app").innerHTML = `<div class="empty-state"><h3>Não foi possível carregar</h3><p>${escapeHtml(err.message || "Erro desconhecido")}</p></div>`;
     });

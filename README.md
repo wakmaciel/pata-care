@@ -11,6 +11,7 @@ Um app web (PWA) para gerenciar a saúde e os cuidados dos seus pets: vacinas (c
 - **Consultas veterinárias**: registre data, veterinário(a)/Dr(a), motivo e observações/diagnóstico — com opção de habilitar uma data de retorno, que entra automaticamente nos Lembretes.
 - **Exames**: registre exames (raio-X, ultrassom, hemograma, etc.) com data, veterinário(a)/clínica, CRMV e observações, anexando os resultados em imagem e/ou PDF.
 - **Cirurgias**: registre cirurgias (castração, remoção de nódulo, ortopédica, etc.) com data, veterinário(a)/clínica, CRMV, observações de pós-operatório e fotos/PDFs anexados — com opção de marcar o pet como castrado(a) automaticamente.
+- **Medidas para roupas**: registre pescoço, peito/tórax e comprimento do dorso do pet (em cm) direto no perfil, para consultar rapidamente na hora de comprar roupas, coleiras e peitorais.
 - **Peso**: histórico com gráfico de evolução e variação em relação ao registro anterior.
 - **Cio** (apenas para pets fêmeas): início, fim e intervalo médio entre os ciclos.
 - **Lembretes**: uma tela só com tudo que está atrasado ou vencendo (vacinas, antipulgas, vermífugos e doses de medicamento) de todos os pets — pode marcar a dose do remédio direto por ali.

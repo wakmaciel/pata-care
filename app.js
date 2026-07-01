@@ -45,7 +45,8 @@
     stethoscope: '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4v6a4 4 0 0 0 8 0V4"/><path d="M6 4H4.5M14 4h1.5"/><path d="M18 12v2.5a5.5 5.5 0 0 1-11 0V13"/><circle cx="19.3" cy="11" r="1.7"/></svg>',
     paperclip: '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12.5l6.5-6.5a3 3 0 0 1 4.2 4.2L11.5 17.4a5 5 0 1 1-7-7L12 3"/></svg>',
     file: '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.5h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-16a1 1 0 0 1 1-1Z"/><path d="M14 3.5V8h4"/></svg>',
-    scissors: '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6.3" r="2.3"/><circle cx="6" cy="17.7" r="2.3"/><path d="M7.8 7.8 19 17M7.8 16.2 19 7"/></svg>'
+    scissors: '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6.3" r="2.3"/><circle cx="6" cy="17.7" r="2.3"/><path d="M7.8 7.8 19 17M7.8 16.2 19 7"/></svg>',
+    ruler: '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.7" y="7.5" width="18.6" height="9" rx="1.6" transform="rotate(-45 12 12)"/><path d="M8.5 8.5 10 10M11 5.5 13 7.5M14.5 9 16 10.5M6 11l1.5 1.5"/></svg>'
   };
 /* ── INTEGRAÇÃO CALENDÁRIO PETS ─────────────────────────────────────────── */
   // Nome exato do seu calendário no iPhone (sem emoji se não tiver)
@@ -788,6 +789,38 @@
       </div>
       ${pet.notes ? `<div class="settings-row"><div class="ic">${ICONS.info}</div><div class="lbl"><div class="t">Observações</div><div class="s">${escapeHtml(pet.notes)}</div></div></div>` : ""}`;
     content.appendChild(infoCard);
+
+    const measureTitle = document.createElement("div");
+    measureTitle.className = "section-title";
+    measureTitle.textContent = "Medidas (para roupas)";
+    content.appendChild(measureTitle);
+
+    const m = pet.measurements || {};
+    const hasMeasurements = m.neck || m.chest || m.length;
+    const measureCard = document.createElement("div");
+    measureCard.className = "card";
+    measureCard.style.cursor = "pointer";
+    measureCard.innerHTML = `
+      <div class="settings-row" style="padding-top:0">
+        <div class="ic">${ICONS.ruler}</div>
+        <div class="lbl"><div class="t">Pescoço</div><div class="s">${m.neck ? m.neck + " cm" : "Não informado"}</div></div>
+      </div>
+      <div class="settings-row">
+        <div class="ic">${ICONS.ruler}</div>
+        <div class="lbl"><div class="t">Peito/Tórax</div><div class="s">${m.chest ? m.chest + " cm" : "Não informado"}</div></div>
+      </div>
+      <div class="settings-row">
+        <div class="ic">${ICONS.ruler}</div>
+        <div class="lbl"><div class="t">Comprimento do dorso</div><div class="s">${m.length ? m.length + " cm" : "Não informado"}</div></div>
+      </div>
+      ${m.notes ? `<div class="settings-row"><div class="ic">${ICONS.info}</div><div class="lbl"><div class="t">Observações</div><div class="s">${escapeHtml(m.notes)}</div></div></div>` : ""}
+      <div class="settings-row">
+        <div class="ic">${ICONS.edit}</div>
+        <div class="lbl"><div class="t" style="color:var(--pink-strong)">${hasMeasurements ? "Editar medidas" : "Adicionar medidas"}</div>${m.updatedAt ? `<div class="s">Atualizado em ${fmtDate(m.updatedAt)}</div>` : ""}</div>
+        <span class="chevron">${ICONS.chevronRight}</span>
+      </div>`;
+    measureCard.addEventListener("click", () => openMeasurementsForm(pet));
+    content.appendChild(measureCard);
 
     const title = document.createElement("div");
     title.className = "section-title";
@@ -2158,6 +2191,78 @@ function renderReminderRow(it) {
         closeSheet();
         toast("Pet excluído");
         navigate("#/");
+      });
+    }
+  }
+
+  /* ========================== FORMULÁRIO: MEDIDAS (ROUPAS) =============================== */
+  function openMeasurementsForm(pet) {
+    const m = pet.measurements || {};
+    const sheet = openSheetEl(`
+      <div class="sheet-handle"></div>
+      <div class="sheet-header">
+        <h3>Medidas de ${escapeHtml(pet.name)}</h3>
+        <button class="icon-btn" id="sheet-close">${ICONS.close}</button>
+      </div>
+      <p style="font-size:12.5px;color:var(--text-muted);line-height:1.5;margin:-4px 0 14px">Úteis na hora de comprar roupas, coleiras e peitorais. Meça com uma fita métrica, com o pet em pé.</p>
+      <div class="field-row">
+        <div class="field">
+          <label>Pescoço (cm)</label>
+          <input type="number" inputmode="decimal" step="0.5" id="me-neck" placeholder="Ex: 32" value="${m.neck || ""}">
+        </div>
+        <div class="field">
+          <label>Peito/Tórax (cm)</label>
+          <input type="number" inputmode="decimal" step="0.5" id="me-chest" placeholder="Ex: 45" value="${m.chest || ""}">
+        </div>
+      </div>
+      <div class="field">
+        <label>Comprimento do dorso (cm)</label>
+        <input type="number" inputmode="decimal" step="0.5" id="me-length" placeholder="Ex: 38" value="${m.length || ""}">
+        <p style="font-size:11.5px;color:var(--text-faint);line-height:1.4;margin-top:6px">Do ponto mais alto da base do pescoço até a base do rabo.</p>
+      </div>
+      <div class="field">
+        <label>Observações</label>
+        <textarea id="me-notes" placeholder="Ex: veste roupa tamanho P, coleira ajustada no 3º furo...">${escapeHtml(m.notes || "")}</textarea>
+      </div>
+      <button class="btn btn-primary btn-block" id="me-save">${ICONS.check} Salvar</button>
+      ${(m.neck || m.chest || m.length || m.notes) ? `<button class="btn btn-danger btn-block" id="me-clear" style="margin-top:10px">${ICONS.trash} Limpar medidas</button>` : ""}
+    `);
+
+    sheet.querySelector("#sheet-close").addEventListener("click", closeSheet);
+    sheet.querySelector("#me-save").addEventListener("click", async () => {
+      const neck = sheet.querySelector("#me-neck").value.trim();
+      const chest = sheet.querySelector("#me-chest").value.trim();
+      const length = sheet.querySelector("#me-length").value.trim();
+      const notes = sheet.querySelector("#me-notes").value.trim();
+      if (!neck && !chest && !length && !notes) { toast("Informe pelo menos uma medida"); return; }
+
+      const updated = Object.assign({}, pet);
+      updated.measurements = {
+        neck: neck ? Number(neck) : null,
+        chest: chest ? Number(chest) : null,
+        length: length ? Number(length) : null,
+        notes,
+        updatedAt: todayISO()
+      };
+      await dbPut("pets", updated);
+      await loadAll();
+      closeSheet();
+      toast("Medidas salvas!");
+      render();
+    });
+
+    const clearBtn = sheet.querySelector("#me-clear");
+    if (clearBtn) {
+      clearBtn.addEventListener("click", async () => {
+        const ok = await confirmDialog({ title: "Limpar medidas?", message: "As medidas registradas para este pet serão removidas.", confirmLabel: "Limpar", danger: true });
+        if (!ok) return;
+        const updated = Object.assign({}, pet);
+        delete updated.measurements;
+        await dbPut("pets", updated);
+        await loadAll();
+        closeSheet();
+        toast("Medidas removidas");
+        render();
       });
     }
   }

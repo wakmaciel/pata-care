@@ -46,7 +46,9 @@
     paperclip: '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12.5l6.5-6.5a3 3 0 0 1 4.2 4.2L11.5 17.4a5 5 0 1 1-7-7L12 3"/></svg>',
     file: '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.5h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-16a1 1 0 0 1 1-1Z"/><path d="M14 3.5V8h4"/></svg>',
     scissors: '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6.3" r="2.3"/><circle cx="6" cy="17.7" r="2.3"/><path d="M7.8 7.8 19 17M7.8 16.2 19 7"/></svg>',
-    ruler: '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.7" y="7.5" width="18.6" height="9" rx="1.6" transform="rotate(-45 12 12)"/><path d="M8.5 8.5 10 10M11 5.5 13 7.5M14.5 9 16 10.5M6 11l1.5 1.5"/></svg>'
+    ruler: '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.7" y="7.5" width="18.6" height="9" rx="1.6" transform="rotate(-45 12 12)"/><path d="M8.5 8.5 10 10M11 5.5 13 7.5M14.5 9 16 10.5M6 11l1.5 1.5"/></svg>',
+    user: '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8.2" r="3.7"/><path d="M5 20c.8-3.6 3.6-5.6 7-5.6s6.2 2 7 5.6"/></svg>',
+    bulb: '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9.2 18h5.6M10.2 21h3.6"/><path d="M12 3a6 6 0 0 1 3.6 10.8c-.8.6-1.2 1.4-1.3 2.2h-4.6c-.1-.8-.5-1.6-1.3-2.2A6 6 0 0 1 12 3Z"/></svg>'
   };
 /* ── INTEGRAÇÃO CALENDÁRIO PETS ─────────────────────────────────────────── */
   // Nome exato do seu calendário no iPhone (sem emoji se não tiver)
@@ -546,12 +548,94 @@
     if (getThemeMode() === "system") applyTheme("system");
   });
 
+  /* --------------------------- Perfil do tutor ------------------------------- */
+  const TUTOR_KEY = "patacare-tutor";
+  function getTutor() {
+    try {
+      const t = JSON.parse(localStorage.getItem(TUTOR_KEY));
+      return t && typeof t === "object" && t.name ? t : null;
+    } catch (err) { return null; }
+  }
+  function saveTutor(t) { localStorage.setItem(TUTOR_KEY, JSON.stringify(t)); }
+
+  function openTutorForm() {
+    const existing = getTutor();
+    let photoData = existing ? existing.photo : null;
+    const sheet = openSheetEl(`
+      <div class="sheet-handle"></div>
+      <div class="sheet-header">
+        <h3>${existing ? "Editar perfil" : "Criar meu perfil"}</h3>
+        <button class="icon-btn" id="sheet-close">${ICONS.close}</button>
+      </div>
+      <div class="field">
+        <label>Foto (opcional)</label>
+        <div class="photo-upload" id="photo-trigger">
+          <div class="ph-icon" id="ph-icon-wrap">${ICONS.camera}</div>
+          <span class="txt">Toque para escolher uma foto</span>
+        </div>
+        <input type="file" accept="image/*" class="visually-hidden" id="photo-input">
+      </div>
+      <div class="field">
+        <label>Nome</label>
+        <input type="text" id="t-name" autocomplete="name" placeholder="Como você quer ser chamado(a)?" value="${existing ? escapeHtml(existing.name || "") : ""}">
+      </div>
+      <div class="field">
+        <label>E-mail (opcional)</label>
+        <input type="text" id="t-email" inputmode="email" autocomplete="email" placeholder="voce@email.com" value="${existing ? escapeHtml(existing.email || "") : ""}">
+      </div>
+      <div class="field">
+        <label>Telefone (opcional)</label>
+        <input type="text" id="t-phone" inputmode="tel" autocomplete="tel" placeholder="(11) 99999-9999" value="${existing ? escapeHtml(existing.phone || "") : ""}">
+      </div>
+      <div class="field">
+        <label>Cidade (opcional)</label>
+        <input type="text" id="t-city" placeholder="Ex: São Paulo" value="${existing ? escapeHtml(existing.city || "") : ""}">
+      </div>
+      <button class="btn btn-primary btn-block" id="t-save">${ICONS.check} Salvar</button>
+    `);
+
+    function refreshPhotoPreview() {
+      const wrap = sheet.querySelector("#ph-icon-wrap, .photo-upload img");
+      const txt = sheet.querySelector(".photo-upload .txt");
+      if (photoData && wrap) {
+        wrap.outerHTML = `<img src="${photoData}" alt="Pré-visualização">`;
+        txt.textContent = "Toque para alterar a foto";
+      }
+    }
+    refreshPhotoPreview();
+    sheet.querySelector("#photo-trigger").addEventListener("click", () => sheet.querySelector("#photo-input").click());
+    sheet.querySelector("#photo-input").addEventListener("change", async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      photoData = await resizeImageFile(file, 400, 0.8);
+      refreshPhotoPreview();
+    });
+
+    sheet.querySelector("#sheet-close").addEventListener("click", closeSheet);
+    sheet.querySelector("#t-save").addEventListener("click", () => {
+      const name = sheet.querySelector("#t-name").value.trim();
+      if (!name) { toast("Digite seu nome 🙂"); return; }
+      saveTutor({
+        name,
+        email: sheet.querySelector("#t-email").value.trim(),
+        phone: sheet.querySelector("#t-phone").value.trim(),
+        city: sheet.querySelector("#t-city").value.trim(),
+        photo: photoData || null,
+        updatedAt: Date.now()
+      });
+      closeSheet();
+      toast(existing ? "Perfil atualizado!" : "Perfil criado!");
+      render();
+    });
+  }
+
   /* -------------------------------- Router ----------------------------------- */
   function parseHash() {
     const h = (location.hash || "#/").replace(/^#\/?/, "");
     const parts = h.split("/").filter(Boolean);
     if (parts.length === 0) return { view: "home" };
     if (parts[0] === "pet" && parts[1]) return { view: "pet", petId: parts[1], tab: parts[2] || "overview" };
+    if (parts[0] === "pets") return { view: "pets" };
     if (parts[0] === "lembretes") return { view: "reminders" };
     if (parts[0] === "ajustes") return { view: "settings" };
     return { view: "home" };
@@ -574,6 +658,7 @@
 
     if (route.view === "home") renderHome(main);
     else if (route.view === "pet") renderPetDetail(main, route.petId, route.tab);
+    else if (route.view === "pets") renderAllPets(main);
     else if (route.view === "reminders") renderReminders(main);
     else if (route.view === "settings") renderSettings(main);
 
@@ -597,8 +682,33 @@
         </div>`;
       bar.querySelector("#btn-back").addEventListener("click", () => navigate("#/"));
       bar.querySelector("#btn-edit-pet").addEventListener("click", () => openPetForm(getPet(route.petId)));
+    } else if (route.view === "pets") {
+      bar.innerHTML = `
+        <div class="topbar-actions">
+          <button class="icon-btn" id="btn-back" aria-label="Voltar">${ICONS.chevronLeft}</button>
+        </div>
+        <h1>Meus pets</h1>
+        <div class="topbar-actions"></div>`;
+      bar.querySelector("#btn-back").addEventListener("click", () => navigate("#/"));
+    } else if (route.view === "home") {
+      const tutor = getTutor();
+      const hasOverdue = STATE.pets.some((p) => {
+        const b = petBadgeStatus(p.id);
+        return b && b.status === "overdue";
+      });
+      bar.innerHTML = `
+        <div class="brand">
+          <span class="logo-dot"><img src="icons/favicon-192.png" alt="PataCare"></span>
+          <h1>Meus Pets</h1>
+        </div>
+        <div class="topbar-actions">
+          <button class="icon-btn" id="btn-bell" aria-label="Lembretes">${ICONS.bell}${hasOverdue ? '<span class="bell-dot"></span>' : ""}</button>
+          <button class="icon-btn avatar-btn" id="btn-profile" aria-label="Meu perfil">${tutor && tutor.photo ? `<img src="${tutor.photo}" alt="Foto do tutor">` : ICONS.user}</button>
+        </div>`;
+      bar.querySelector("#btn-bell").addEventListener("click", () => navigate("#/lembretes"));
+      bar.querySelector("#btn-profile").addEventListener("click", () => navigate("#/ajustes"));
     } else {
-      const titles = { home: "Meus Pets", reminders: "Lembretes", settings: "Ajustes" };
+      const titles = { reminders: "Lembretes", settings: "Ajustes" };
       bar.innerHTML = `
         <div class="brand">
           <span class="logo-dot"><img src="icons/favicon-192.png" alt="PataCare"></span>
@@ -622,7 +732,7 @@
       { id: "settings", label: "Ajustes", icon: "settings", hash: "#/ajustes" }
     ];
     items.forEach((it) => {
-      const active = route.view === it.id;
+      const active = route.view === it.id || (it.id === "home" && route.view === "pets");
       const div = document.createElement("div");
       div.className = "nav-item" + (active ? " active" : "");
       div.innerHTML = `${ICONS[it.icon]}<span>${it.label}${it.badge ? ` (${it.badge})` : ""}</span>`;
@@ -635,7 +745,7 @@
   function renderFab(route) {
     document.querySelectorAll(".fab").forEach((f) => f.remove());
     let action = null;
-    if (route.view === "home") action = () => openPetForm(null);
+    if (route.view === "home" || route.view === "pets") action = () => openPetForm(null);
     else if (route.view === "pet") {
       const tab = route.tab || "overview";
       const pet = getPet(route.petId);
@@ -657,7 +767,190 @@
   }
 
   /* ================================ HOME ===================================== */
+  const DAILY_TIPS = [
+    "Passeios diários ajudam na saúde física e mental do seu cão. 🐾",
+    "Água fresca sempre disponível: troque pelo menos 2x ao dia. 💧",
+    "Escovar os dentes do pet algumas vezes por semana previne tártaro e mau hálito. 🦷",
+    "Mantenha vacinas e vermífugos em dia — prevenção é o melhor remédio. 💉",
+    "Gatos também precisam de brincadeiras diárias para gastar energia. 🐱",
+    "Escovar a pelagem regularmente reduz pelos soltos e fortalece o vínculo. ✨",
+    "Atenção ao calor: prefira passear nos horários mais frescos do dia. ☀️",
+    "Petiscos não devem passar de 10% das calorias diárias do pet. 🍖",
+    "Brinquedos e enriquecimento ambiental deixam o dia a dia do pet mais feliz. 🧸",
+    "Consultas de rotina anuais ajudam a detectar problemas cedo. 🩺",
+    "Mudanças de apetite ou comportamento podem indicar algo — fique de olho. 👀",
+    "Carinho e rotina previsível deixam os pets mais seguros e calmos. 💕"
+  ];
+  let tipOffset = 0;
+
   function renderHome(main) {
+    const pets = petsSorted();
+    const tutor = getTutor();
+    const firstName = tutor && tutor.name ? tutor.name.trim().split(/\s+/)[0] : "";
+
+    const hero = document.createElement("div");
+    hero.className = "home-hero";
+    hero.innerHTML = `
+      <div class="hero-txt">
+        <div class="hello">Olá${firstName ? ", " + escapeHtml(firstName) : ""}! 👋</div>
+        <h2>Que bom te ver aqui!</h2>
+        <p class="sub">Acompanhe a saúde, a rotina e o bem-estar dos seus pets em um só lugar.</p>
+      </div>
+      <div class="hero-art" aria-hidden="true">
+        <span class="hh">${ICONS.heart}</span>
+        <span class="hp">${ICONS.paw}</span>
+      </div>`;
+    main.appendChild(hero);
+
+    const secHead = document.createElement("div");
+    secHead.className = "sec-head";
+    secHead.innerHTML = `<h3>Meus pets</h3>${pets.length > 0 ? `<button class="sec-link" id="btn-all-pets">Ver todos ${ICONS.chevronRight}</button>` : ""}`;
+    main.appendChild(secHead);
+    const allBtn = secHead.querySelector("#btn-all-pets");
+    if (allBtn) allBtn.addEventListener("click", () => navigate("#/pets"));
+
+    const strip = document.createElement("div");
+    strip.className = "hpet-strip";
+    pets.forEach((pet) => strip.appendChild(renderHomePetCard(pet)));
+    const addCard = document.createElement("div");
+    addCard.className = "hpet-card hpet-add";
+    addCard.setAttribute("role", "button");
+    addCard.innerHTML = `<div class="plus-circ">${ICONS.plus}</div><div class="lbl">Adicionar<br>pet</div>`;
+    addCard.addEventListener("click", () => openPetForm(null));
+    strip.appendChild(addCard);
+    main.appendChild(strip);
+
+    if (pets.length > 0) main.appendChild(renderWeekSummary());
+    main.appendChild(renderDailyTip());
+  }
+
+  function renderHomePetCard(pet) {
+    const card = document.createElement("div");
+    card.className = "hpet-card";
+    const badge = petBadgeStatus(pet.id);
+    const speciesIcon = pet.species === "cat" ? ICONS.cat : ICONS.dog;
+    let dot = "", chip = "";
+    if (badge) {
+      if (badge.status === "overdue") {
+        dot = `<span class="hpet-dot overdue">${ICONS.alert}</span>`;
+        chip = `<span class="chip alert">${badge.count > 1 ? badge.count + " atrasados" : "Atrasado"}</span>`;
+      } else if (badge.status === "soon") {
+        dot = `<span class="hpet-dot soon">${ICONS.calendar}</span>`;
+        chip = `<span class="chip soon">Em breve</span>`;
+      } else {
+        dot = `<span class="hpet-dot ok">${ICONS.check}</span>`;
+        chip = `<span class="chip ok">${ICONS.check} Tudo certo</span>`;
+      }
+    }
+    const sexLabel = pet.sex === "F" ? "Fêmea" : "Macho";
+    const breed = pet.breed || (pet.species === "cat" ? "Gato" : pet.species === "dog" ? "Cão" : "Pet");
+    card.innerHTML = `
+      <div class="hpet-photo-wrap">
+        ${pet.photo ? `<img class="hpet-photo" src="${pet.photo}" alt="Foto de ${escapeHtml(pet.name)}">` : `<div class="hpet-photo placeholder">${speciesIcon}</div>`}
+        ${dot}
+      </div>
+      <h3>${escapeHtml(pet.name)}</h3>
+      <div class="meta">${escapeHtml(breed)} · ${sexLabel}${pet.birthDate ? `<br>${calcAge(pet.birthDate)}` : ""}</div>
+      ${chip}`;
+    card.addEventListener("click", () => navigate(`#/pet/${pet.id}/overview`));
+    return card;
+  }
+
+  function renderWeekSummary() {
+    const today = todayISO();
+    let apptToday = 0, apptTomorrow = 0, apptWeek = 0, overdueCount = 0;
+    let nextVacDate = null, vacSoon = 0;
+    STATE.pets.forEach((pet) => {
+      careRecordsFor(pet.id).forEach((rec) => {
+        if (!rec.nextDate) return;
+        const d = daysBetween(today, rec.nextDate);
+        if (d < 0) { overdueCount++; return; }
+        if (d <= 7) {
+          apptWeek++;
+          if (d === 0) apptToday++;
+          else if (d === 1) apptTomorrow++;
+        }
+        if (rec.category === "vaccine") {
+          if (!nextVacDate || rec.nextDate < nextVacDate) nextVacDate = rec.nextDate;
+          if (d <= 30) vacSoon++;
+        }
+      });
+    });
+    let dosesPending = 0;
+    const endOfToday = new Date();
+    endOfToday.setHours(23, 59, 59, 999);
+    STATE.records.filter((r) => r.category === "medication").forEach((med) => {
+      (med.doses || []).forEach((dose) => {
+        if (isDosePending(dose) && new Date(dose.scheduledAt) <= endOfToday) dosesPending++;
+      });
+    });
+
+    const apptParts = [];
+    if (apptToday) apptParts.push(apptToday + " hoje");
+    if (apptTomorrow) apptParts.push(apptTomorrow + " amanhã");
+    const apptSub = overdueCount > 0
+      ? `<span style="color:var(--red);font-weight:700">${overdueCount} atrasado${overdueCount > 1 ? "s" : ""}</span>`
+      : apptParts.length ? escapeHtml(apptParts.join(" · ")) : "Nenhum esta semana";
+
+    let vacSub = "Nenhuma prevista";
+    if (nextVacDate) {
+      const nd = parseISODate(nextVacDate);
+      vacSub = "Próxima: " + pad(nd.getDate()) + "/" + pad(nd.getMonth() + 1);
+    }
+    const medSub = dosesPending === 0 ? "Tudo em dia! ✅" : "Pendente" + (dosesPending > 1 ? "s" : "") + " hoje";
+
+    const card = document.createElement("div");
+    card.className = "week-card";
+    card.innerHTML = `
+      <div class="week-head">
+        <h3>Resumo da semana</h3>
+        <span class="week-pill">Próximos 7 dias</span>
+      </div>
+      <div class="week-grid">
+        <div class="wstat">
+          <div class="ic">${ICONS.calendar}</div>
+          <div class="num">${apptWeek}</div>
+          <div class="lbl">Compromisso${apptWeek === 1 ? "" : "s"}</div>
+          <div class="sub">${apptSub}</div>
+        </div>
+        <div class="wstat">
+          <div class="ic">${ICONS.syringe}</div>
+          <div class="num">${vacSoon}</div>
+          <div class="lbl">Vacina${vacSoon === 1 ? "" : "s"}</div>
+          <div class="sub">${escapeHtml(vacSub)}</div>
+        </div>
+        <div class="wstat">
+          <div class="ic">${ICONS.medkit}</div>
+          <div class="num">${dosesPending}</div>
+          <div class="lbl">Medicamento${dosesPending === 1 ? "" : "s"}</div>
+          <div class="sub">${escapeHtml(medSub)}</div>
+        </div>
+      </div>`;
+    return card;
+  }
+
+  function renderDailyTip() {
+    const dayIndex = Math.floor(Date.now() / 86400000);
+    const tipAt = (n) => DAILY_TIPS[(dayIndex + n) % DAILY_TIPS.length];
+    const card = document.createElement("div");
+    card.className = "tip-card";
+    card.setAttribute("role", "button");
+    card.setAttribute("aria-label", "Dica do dia — toque para ver outra dica");
+    card.innerHTML = `
+      <div class="ic">${ICONS.bulb}</div>
+      <div class="tx">
+        <div class="t">Dica do dia</div>
+        <div class="s">${escapeHtml(tipAt(tipOffset))}</div>
+      </div>
+      <span class="chev">${ICONS.chevronRight}</span>`;
+    card.addEventListener("click", () => {
+      tipOffset++;
+      card.querySelector(".s").textContent = tipAt(tipOffset);
+    });
+    return card;
+  }
+
+  function renderAllPets(main) {
     const pets = petsSorted();
     if (pets.length === 0) {
       main.innerHTML = `
@@ -1806,6 +2099,30 @@ function renderReminderRow(it) {
 
   /* ================================ AJUSTES ==================================== */
   function renderSettings(main) {
+    const tutor = getTutor();
+    const profTitle = document.createElement("div");
+    profTitle.className = "section-title";
+    profTitle.textContent = "Meu perfil";
+    main.appendChild(profTitle);
+
+    const profCard = document.createElement("div");
+    profCard.className = "card";
+    profCard.style.marginBottom = "18px";
+    const profSub = tutor
+      ? ([tutor.city, tutor.email, tutor.phone].filter(Boolean).join(" · ") || "Toque para editar seus dados")
+      : "Adicione seu nome e sua foto";
+    profCard.innerHTML = `
+      <div class="profile-row" id="profile-open" role="button" aria-label="${tutor ? "Editar perfil" : "Criar meu perfil"}">
+        ${tutor && tutor.photo ? `<img class="profile-avatar" src="${tutor.photo}" alt="Foto do tutor">` : `<div class="profile-avatar placeholder">${ICONS.user}</div>`}
+        <div style="flex:1;min-width:0">
+          <div style="font-size:16px;font-weight:700">${tutor ? escapeHtml(tutor.name) : "Criar meu perfil"}</div>
+          <div style="font-size:12.5px;color:var(--text-muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(profSub)}</div>
+        </div>
+        <span class="chevron">${ICONS.chevronRight}</span>
+      </div>`;
+    main.appendChild(profCard);
+    profCard.querySelector("#profile-open").addEventListener("click", () => openTutorForm());
+
     const themeCard = document.createElement("div");
     themeCard.className = "card";
     themeCard.style.marginBottom = "18px";
@@ -2181,7 +2498,7 @@ function renderReminderRow(it) {
   }
 
   function buildBackupData() {
-    return { app: "patacare", version: 1, exportedAt: new Date().toISOString(), pets: STATE.pets, records: STATE.records };
+    return { app: "patacare", version: 1, exportedAt: new Date().toISOString(), pets: STATE.pets, records: STATE.records, tutor: getTutor() };
   }
 
   async function driveUploadBackup(silent) {
@@ -2245,6 +2562,7 @@ function renderReminderRow(it) {
       await dbClear("pets"); await dbClear("records");
       for (const p of data.pets) await dbPut("pets", p);
       for (const r of data.records) await dbPut("records", r);
+      if (data.tutor && typeof data.tutor === "object" && data.tutor.name) saveTutor(data.tutor);
       await loadAll();
       toast("Dados restaurados do Google Drive!");
       navigate("#/");
@@ -2296,6 +2614,7 @@ function renderReminderRow(it) {
         await dbClear("pets"); await dbClear("records");
         for (const p of data.pets) await dbPut("pets", p);
         for (const r of data.records) await dbPut("records", r);
+        if (data.tutor && typeof data.tutor === "object" && data.tutor.name) saveTutor(data.tutor);
         await loadAll();
         toast("Backup importado com sucesso!");
         navigate("#/");

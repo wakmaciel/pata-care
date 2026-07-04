@@ -568,6 +568,128 @@ canvas#weightChart{ width:100%; height: 140px; display:block; }
 .vtl-next{ margin-top:4px; padding:13px 14px; border-radius: var(--radius-md); font-size:13px; font-weight:700; display:flex; align-items:center; gap:8px; }
 .vtl-next svg{ width:16px; height:16px; flex-shrink:0; stroke:currentColor; fill:none; }
 
+/* ============================================================
+   Home (refatorada) + Perfil do tutor
+   ============================================================ */
+.topbar .icon-btn{ position:relative; }
+.bell-dot{
+  position:absolute; top:7px; right:8px; width:9px; height:9px; border-radius:50%;
+  background: var(--pink); border:2px solid var(--surface);
+}
+.avatar-btn{ overflow:hidden; padding:0; }
+.avatar-btn img{ width:100%; height:100%; object-fit:cover; border-radius:50%; display:block; }
+.avatar-btn svg{ width:18px; height:18px; stroke: var(--pink-strong); fill:none; }
+
+.home-hero{ display:flex; align-items:center; gap:12px; padding: 10px 2px 6px; }
+.home-hero .hero-txt{ flex:1; min-width:0; }
+.home-hero .hello{ font-family: var(--font-display); font-weight:700; font-size:15px; color: var(--pink-strong); }
+.home-hero h2{ font-size:25px; line-height:1.16; margin:3px 0 8px; }
+.home-hero .sub{ font-size:13.5px; color: var(--text-muted); line-height:1.55; }
+.hero-art{
+  position:relative; width:92px; height:92px; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center;
+}
+.hero-art .hh{ position:absolute; inset:0; }
+.hero-art .hh svg{ width:100%; height:100%; fill: var(--pink-soft); stroke: var(--pink); stroke-width:1.1; }
+.hero-art .hp{ position:relative; width:32px; height:32px; margin-top:-8px; }
+.hero-art .hp svg{ width:100%; height:100%; fill: var(--pink); stroke:none; }
+
+.sec-head{ display:flex; align-items:baseline; justify-content:space-between; margin: 20px 2px 12px; }
+.sec-head h3{ font-size:19px; }
+.sec-link{
+  border:none; background:none; color: var(--pink-strong); font-family: var(--font-body);
+  font-size:13.5px; font-weight:700; display:inline-flex; align-items:center; gap:1px;
+  cursor:pointer; padding:4px 0;
+}
+.sec-link svg{ width:15px; height:15px; stroke: currentColor; fill:none; }
+
+.hpet-strip{
+  display:flex; gap:12px; overflow-x:auto; margin:0 -18px; padding: 4px 18px 10px;
+  -webkit-overflow-scrolling: touch; scroll-snap-type:x proximity; touch-action: pan-x pan-y;
+}
+.hpet-card{
+  scroll-snap-align:start; flex:0 0 152px;
+  background: var(--surface); border:1px solid var(--border); border-radius: var(--radius-lg);
+  padding: 18px 12px 16px; display:flex; flex-direction:column; align-items:center; text-align:center;
+  box-shadow: var(--shadow-sm); cursor:pointer; transition: transform .12s ease;
+}
+.hpet-card:active{ transform: scale(.97); }
+.hpet-photo-wrap{ position:relative; margin-bottom:11px; }
+.hpet-photo{
+  width:82px; height:82px; border-radius:50%; object-fit:cover; display:block;
+  background: var(--pink-soft); box-shadow: 0 0 0 3px var(--pink-soft);
+}
+.hpet-photo.placeholder{ display:flex; align-items:center; justify-content:center; }
+.hpet-photo.placeholder svg{ width:36px; height:36px; stroke: var(--pink); fill:none; }
+.hpet-dot{
+  position:absolute; right:-2px; bottom:1px; width:23px; height:23px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center; border:2.5px solid var(--surface);
+}
+.hpet-dot svg{ width:11px; height:11px; stroke:#fff; fill:none; }
+.hpet-dot.ok{ background: var(--mint); }
+.hpet-dot.soon{ background: var(--peach); }
+.hpet-dot.overdue{ background: var(--red); }
+.hpet-card h3{ font-size:15.5px; }
+.hpet-card .meta{ font-size:11.5px; color: var(--text-muted); margin-top:3px; line-height:1.45; flex:1; }
+.hpet-card .chip{ margin-top:10px; }
+.hpet-add{ justify-content:center; gap:12px; border-style:dashed; background:transparent; box-shadow:none; }
+.hpet-add .plus-circ{
+  width:64px; height:64px; border-radius:50%; border:2px dashed var(--pink);
+  display:flex; align-items:center; justify-content:center;
+}
+.hpet-add .plus-circ svg{ width:26px; height:26px; stroke: var(--pink); fill:none; stroke-width:2.2; }
+.hpet-add .lbl{ color: var(--pink-strong); font-weight:700; font-size:14.5px; line-height:1.35; }
+
+.week-card{
+  background: var(--surface); border:1px solid var(--border); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm); padding: 18px 14px 16px; margin-top: 8px;
+}
+.week-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; padding:0 4px; }
+.week-head h3{ font-size:17px; }
+.week-pill{
+  font-size:12px; font-weight:700; color: var(--text-muted); background: var(--surface-2);
+  border:1px solid var(--border); padding:6px 12px; border-radius: var(--radius-pill); white-space:nowrap;
+}
+.week-grid{ display:flex; }
+.wstat{ flex:1; display:flex; flex-direction:column; align-items:center; text-align:center; padding:0 6px; min-width:0; }
+.wstat + .wstat{ border-left:1px solid var(--border); }
+.wstat .ic{
+  width:46px; height:46px; border-radius:50%; background: var(--surface-2);
+  display:flex; align-items:center; justify-content:center; margin-bottom:8px;
+}
+.wstat .ic svg{ width:20px; height:20px; stroke: var(--pink-strong); fill:none; }
+.wstat .num{ font-family: var(--font-display); font-size:26px; font-weight:800; line-height:1; }
+.wstat .lbl{ font-size:12.5px; font-weight:700; margin-top:4px; }
+.wstat .sub{ font-size:11px; color: var(--text-muted); margin-top:2px; line-height:1.35; }
+
+.tip-card{
+  display:flex; align-items:center; gap:13px;
+  background: linear-gradient(135deg, var(--pink-soft), var(--peach-soft));
+  border-radius: var(--radius-lg); padding:16px; margin-top:18px; cursor:pointer;
+  transition: transform .12s ease;
+}
+.tip-card:active{ transform: scale(.985); }
+.tip-card .ic{
+  width:42px; height:42px; border-radius:50%; background: var(--surface);
+  display:flex; align-items:center; justify-content:center; flex-shrink:0; box-shadow: var(--shadow-sm);
+}
+.tip-card .ic svg{ width:20px; height:20px; stroke: var(--pink-strong); fill:none; }
+.tip-card .tx{ flex:1; min-width:0; }
+.tip-card .t{ font-family: var(--font-display); font-weight:700; font-size:14.5px; color: var(--pink-strong); }
+.tip-card .s{ font-size:12.5px; color: var(--text-muted); margin-top:2px; line-height:1.5; }
+html[data-theme="dark"] .tip-card .s{ color: var(--text); opacity:.75; }
+.tip-card .chev{ display:inline-flex; flex-shrink:0; }
+.tip-card .chev svg{ width:18px; height:18px; stroke: var(--pink-strong); fill:none; }
+
+/* Perfil do tutor (Ajustes) */
+.profile-row{ display:flex; align-items:center; gap:13px; cursor:pointer; }
+.profile-avatar{
+  width:52px; height:52px; border-radius:50%; object-fit:cover; flex-shrink:0;
+  background: var(--surface-2); box-shadow: 0 0 0 3px var(--pink-soft);
+}
+.profile-avatar.placeholder{ display:flex; align-items:center; justify-content:center; }
+.profile-avatar.placeholder svg{ width:24px; height:24px; stroke: var(--pink-strong); fill:none; }
+
 .lightbox{ position:fixed; inset:0; background:rgba(0,0,0,.85); z-index:300; display:flex; align-items:center; justify-content:center; padding:20px; }
 .lightbox img{ max-width:100%; max-height:100%; border-radius: var(--radius-md); }
 

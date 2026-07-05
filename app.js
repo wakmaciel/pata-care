@@ -3614,7 +3614,14 @@ function renderReminderRow(it) {
   function registerServiceWorker() {
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
-        navigator.serviceWorker.register("sw.js").catch(() => {});
+        navigator.serviceWorker.register("sw.js").then((reg) => {
+          reg.update().catch(() => {});
+          // PWA instalado não recarrega a página ao reabrir; força a checagem
+          // de nova versão sempre que o app volta ao primeiro plano.
+          document.addEventListener("visibilitychange", () => {
+            if (document.visibilityState === "visible") reg.update().catch(() => {});
+          });
+        }).catch(() => {});
       });
 
       let refreshing = false;

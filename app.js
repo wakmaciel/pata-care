@@ -40,6 +40,7 @@
     cog_small: '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/></svg>',
     backup: '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8a7 7 0 1 1 1.8 8.4"/><path d="M3.5 12.5 5 8l4 1.4"/><path d="M12 8v4.3l3 1.7"/></svg>',
     info: '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5.2M12 8v.1"/></svg>',
+    chip: '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="2"/><rect x="9.5" y="9.5" width="5" height="5" rx="1"/><path d="M9 6V3.5M15 6V3.5M9 20.5V18M15 20.5V18M6 9H3.5M6 15H3.5M20.5 9H18M20.5 15H18"/></svg>',
     dots: '<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="5.5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="18.5" r="1.6"/></svg>',
     clipboard: '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4.5" width="14" height="17" rx="2"/><rect x="9" y="3" width="6" height="3.2" rx="1"/><path d="M8.5 11h7M8.5 14.5h7M8.5 18h4.5"/></svg>',
     stethoscope: '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4v6a4 4 0 0 0 8 0V4"/><path d="M6 4H4.5M14 4h1.5"/><path d="M18 12v2.5a5.5 5.5 0 0 1-11 0V13"/><circle cx="19.3" cy="11" r="1.7"/></svg>',
@@ -1080,6 +1081,7 @@
         <div class="ic">${ICONS.heart}</div>
         <div class="lbl"><div class="t">Castrado(a)</div><div class="s">${pet.neutered ? "Sim" : "Não"}</div></div>
       </div>
+      ${pet.microchip ? `<div class="settings-row"><div class="ic">${ICONS.chip}</div><div class="lbl"><div class="t">Microchip</div><div class="s">${escapeHtml(pet.microchip)}</div></div></div>` : ""}
       ${pet.notes ? `<div class="settings-row"><div class="ic">${ICONS.info}</div><div class="lbl"><div class="t">Observações</div><div class="s">${escapeHtml(pet.notes)}</div></div></div>` : ""}`;
     content.appendChild(infoCard);
 
@@ -2369,7 +2371,7 @@ function renderReminderRow(it) {
     return `
       <div class="pet-block">
         <h2>${escapeHtml(pet.name)}</h2>
-        <div class="pet-meta">${pet.species === "cat" ? "Gato" : pet.species === "dog" ? "Cão" : "Outro"} · ${escapeHtml(pet.breed || "Raça não informada")} · ${pet.sex === "F" ? "Fêmea" : "Macho"} · ${pet.neutered ? "Castrado(a)" : "Não castrado(a)"}${pet.birthDate ? " · Nascimento: " + fmtDate(pet.birthDate) + " (" + calcAge(pet.birthDate) + ")" : ""}</div>
+        <div class="pet-meta">${pet.species === "cat" ? "Gato" : pet.species === "dog" ? "Cão" : "Outro"} · ${escapeHtml(pet.breed || "Raça não informada")} · ${pet.sex === "F" ? "Fêmea" : "Macho"} · ${pet.neutered ? "Castrado(a)" : "Não castrado(a)"}${pet.birthDate ? " · Nascimento: " + fmtDate(pet.birthDate) + " (" + calcAge(pet.birthDate) + ")" : ""}${pet.microchip ? " · Microchip: " + escapeHtml(pet.microchip) : ""}</div>
 
         <h3>Vacinas</h3>
         ${table(["Vacina", "Data", "Dose", "Próxima"], vacRows)}
@@ -2680,6 +2682,10 @@ function renderReminderRow(it) {
         <input type="date" id="f-birth" value="${existing ? existing.birthDate || "" : ""}">
       </div>
       <div class="field">
+        <label>Microchip (opcional)</label>
+        <input type="text" id="f-microchip" inputmode="numeric" placeholder="Nº do microchip para rastreio (15 dígitos)" value="${existing ? escapeHtml(existing.microchip || "") : ""}">
+      </div>
+      <div class="field">
         <label>Observações</label>
         <textarea id="f-notes" placeholder="Alergias, particularidades...">${existing ? escapeHtml(existing.notes || "") : ""}</textarea>
       </div>
@@ -2723,9 +2729,10 @@ function renderReminderRow(it) {
       const neutered = sheet.querySelector("#seg-neutered .active").dataset.v === "1";
       const breed = sheet.querySelector("#f-breed").value.trim();
       const birthDate = sheet.querySelector("#f-birth").value;
+      const microchip = sheet.querySelector("#f-microchip").value.trim();
       const notes = sheet.querySelector("#f-notes").value.trim();
       const pet = existing ? Object.assign({}, existing) : { id: uid(), createdAt: Date.now() };
-      Object.assign(pet, { name, species, sex, neutered, breed, birthDate, notes, photo: photoData });
+      Object.assign(pet, { name, species, sex, neutered, breed, birthDate, microchip, notes, photo: photoData });
       await dbPut("pets", pet);
       await loadAll();
       closeSheet();

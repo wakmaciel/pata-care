@@ -40,6 +40,7 @@
     cog_small: '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/></svg>',
     backup: '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8a7 7 0 1 1 1.8 8.4"/><path d="M3.5 12.5 5 8l4 1.4"/><path d="M12 8v4.3l3 1.7"/></svg>',
     info: '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5.2M12 8v.1"/></svg>',
+    chip: '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="2"/><rect x="9.5" y="9.5" width="5" height="5" rx="1"/><path d="M9 6V3.5M15 6V3.5M9 20.5V18M15 20.5V18M6 9H3.5M6 15H3.5M20.5 9H18M20.5 15H18"/></svg>',
     dots: '<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="5.5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="18.5" r="1.6"/></svg>'
   };
   /* ------------------------------ Util ----------------------------------- */
@@ -530,6 +531,7 @@
         <div class="ic">${pet.species === "cat" ? ICONS.cat : ICONS.dog}</div>
         <div class="lbl"><div class="t">Espécie e raça</div><div class="s">${(pet.species === "cat" ? "Gato" : pet.species === "dog" ? "Cão" : "Outro")} · ${escapeHtml(pet.breed || "—")}</div></div>
       </div>
+      ${pet.microchip ? `<div class="settings-row"><div class="ic">${ICONS.chip}</div><div class="lbl"><div class="t">Microchip</div><div class="s">${escapeHtml(pet.microchip)}</div></div></div>` : ""}
       ${pet.notes ? `<div class="settings-row"><div class="ic">${ICONS.info}</div><div class="lbl"><div class="t">Observações</div><div class="s">${escapeHtml(pet.notes)}</div></div></div>` : ""}`;
     content.appendChild(infoCard);
 
@@ -1266,7 +1268,7 @@
     return `
       <div class="pet-block">
         <h2>${escapeHtml(pet.name)}</h2>
-        <div class="pet-meta">${pet.species === "cat" ? "Gato" : pet.species === "dog" ? "Cão" : "Outro"} · ${escapeHtml(pet.breed || "Raça não informada")} · ${pet.sex === "F" ? "Fêmea" : "Macho"}${pet.birthDate ? " · Nascimento: " + fmtDate(pet.birthDate) + " (" + calcAge(pet.birthDate) + ")" : ""}</div>
+        <div class="pet-meta">${pet.species === "cat" ? "Gato" : pet.species === "dog" ? "Cão" : "Outro"} · ${escapeHtml(pet.breed || "Raça não informada")} · ${pet.sex === "F" ? "Fêmea" : "Macho"}${pet.birthDate ? " · Nascimento: " + fmtDate(pet.birthDate) + " (" + calcAge(pet.birthDate) + ")" : ""}${pet.microchip ? " · Microchip: " + escapeHtml(pet.microchip) : ""}</div>
 
         <h3>Vacinas</h3>
         ${table(["Vacina", "Data", "Dose", "Próxima"], vacRows)}
@@ -1375,6 +1377,10 @@
         </div>
       </div>
       <div class="field">
+        <label>Microchip (opcional)</label>
+        <input type="text" id="f-microchip" inputmode="numeric" placeholder="Nº do microchip para rastreio (15 dígitos)" value="${existing ? escapeHtml(existing.microchip || "") : ""}">
+      </div>
+      <div class="field">
         <label>Observações</label>
         <textarea id="f-notes" placeholder="Alergias, particularidades...">${existing ? escapeHtml(existing.notes || "") : ""}</textarea>
       </div>
@@ -1415,9 +1421,10 @@
       const sex = sheet.querySelector("#seg-sex .active").dataset.v;
       const breed = sheet.querySelector("#f-breed").value.trim();
       const birthDate = sheet.querySelector("#f-birth").value;
+      const microchip = sheet.querySelector("#f-microchip").value.trim();
       const notes = sheet.querySelector("#f-notes").value.trim();
       const pet = existing ? Object.assign({}, existing) : { id: uid(), createdAt: Date.now() };
-      Object.assign(pet, { name, species, sex, breed, birthDate, notes, photo: photoData });
+      Object.assign(pet, { name, species, sex, breed, birthDate, microchip, notes, photo: photoData });
       await dbPut("pets", pet);
       await loadAll();
       closeSheet();

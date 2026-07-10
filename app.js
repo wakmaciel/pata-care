@@ -395,21 +395,21 @@
   function dbPut(storeName, obj) {
     return tx(storeName, "readwrite").then((store) => new Promise((resolve, reject) => {
       const req = store.put(obj);
-      req.onsuccess = () => resolve(obj);
+      req.onsuccess = () => { scheduleDriveBackupAfterChange(); resolve(obj); };
       req.onerror = () => reject(req.error);
     }));
   }
   function dbDelete(storeName, id) {
     return tx(storeName, "readwrite").then((store) => new Promise((resolve, reject) => {
       const req = store.delete(id);
-      req.onsuccess = () => resolve();
+      req.onsuccess = () => { scheduleDriveBackupAfterChange(); resolve(); };
       req.onerror = () => reject(req.error);
     }));
   }
   function dbClear(storeName) {
     return tx(storeName, "readwrite").then((store) => new Promise((resolve, reject) => {
       const req = store.clear();
-      req.onsuccess = () => resolve();
+      req.onsuccess = () => { scheduleDriveBackupAfterChange(); resolve(); };
       req.onerror = () => reject(req.error);
     }));
   }
@@ -2375,7 +2375,7 @@ function renderReminderRow(it) {
     } else {
       driveCard.innerHTML = `
         <p style="font-size:13.5px;color:var(--text-muted);line-height:1.5;margin-bottom:14px">
-          Conecte sua conta Google para o PataCare enviar um backup para o Google Drive automaticamente sempre que você abrir o app (no máximo 1x por dia).
+          Conecte sua conta Google para o PataCare proteger seus dados no Drive automaticamente ao abrir o app e depois de cada alteração.
         </p>
         ${driveConnected ? `<p style="font-size:13px;color:var(--mint);margin-bottom:12px">✓ Conectado — ${escapeHtml(driveLastText)}</p>` : ""}
         <button class="btn btn-primary btn-block" id="btn-drive-toggle" style="margin-bottom:10px">${driveConnected ? "Desconectar Google Drive" : `${ICONS.backup} Conectar Google Drive`}</button>
@@ -2580,12 +2580,18 @@ function renderReminderRow(it) {
   const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
   const DRIVE_FOLDER_NAME = "PataCare Backups";
   const DRIVE_FILE_NAME = "patacare-backup.json";
+  // Cada envio novo gera uma cópia. Assim, uma falha local nunca sobrescreve a
+  // última cópia boa que está no Drive.
+  const DRIVE_FILE_PREFIX = "patacare-backup-";
+  const DRIVE_MAX_BACKUPS = 10;
   const DRIVE_CONNECTED_KEY = "patacare-drive-connected";
   const DRIVE_LAST_BACKUP_KEY = "patacare-drive-last-backup";
 
   let gTokenClient = null;
   let gAccessToken = null;
   let gTokenExpiresAt = 0;
+  let gTokenRequest = null;
+  let driveBackupTimer = null;
 
   function isDriveConfigured() {
     return !!GOOGLE_CLIENT_ID && !GOOGLE_CLIENT_ID.startsWith("SEU_CLIENT_ID");
@@ -2597,9 +2603,28 @@ function renderReminderRow(it) {
     return localStorage.getItem(DRIVE_LAST_BACKUP_KEY);
   }
 
-  function ensureGTokenClient() {
+  // Aguarda a conclusão de uma sequência de edições antes de enviar. Isso evita
+  // muitos uploads ao preencher um formulário, sem deixar a cópia só para o dia seguinte.
+  function scheduleDriveBackupAfterChange() {
+    if (!isDriveConfigured() || !isDriveConnected()) return;
+    clearTimeout(driveBackupTimer);
+    driveBackupTimer = setTimeout(() => {
+      if (!isDriveConnected()) return;
+      driveUploadBackup(true).catch(() => {});
+    }, 30000);
+  }
+
+  async function waitForGoogleIdentity() {
+    const until = Date.now() + 10000;
+    while ((!window.google || !google.accounts || !google.accounts.oauth2) && Date.now() < until) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    return !!(window.google && google.accounts && google.accounts.oauth2);
+  }
+
+  async function ensureGTokenClient() {
     if (gTokenClient) return gTokenClient;
-    if (!window.google || !google.accounts || !google.accounts.oauth2) return null;
+    if (!(await waitForGoogleIdentity())) return null;
     gTokenClient = google.accounts.oauth2.initTokenClient({
       client_id: GOOGLE_CLIENT_ID,
       scope: DRIVE_SCOPE,
@@ -2609,8 +2634,9 @@ function renderReminderRow(it) {
   }
 
   function requestDriveToken(silent) {
-    return new Promise((resolve, reject) => {
-      const client = ensureGTokenClient();
+    if (gTokenRequest) return gTokenRequest;
+    gTokenRequest = new Promise(async (resolve, reject) => {
+      const client = await ensureGTokenClient();
       if (!client) { reject(new Error("Google Identity Services ainda não carregou")); return; }
       client.callback = (resp) => {
         if (resp && resp.error) { reject(new Error(resp.error)); return; }
@@ -2619,11 +2645,14 @@ function renderReminderRow(it) {
         resolve(gAccessToken);
       };
       try {
-        client.requestAccessToken({ prompt: silent ? "" : "consent" });
+        // "select_account" permite reconectar/trocar de conta sem pedir uma
+        // autorização completa a cada vez. O token não é persistido pelo GIS.
+        client.requestAccessToken({ prompt: silent ? "" : "select_account" });
       } catch (err) {
         reject(err);
       }
-    });
+    }).finally(() => { gTokenRequest = null; });
+    return gTokenRequest;
   }
 
   async function getDriveToken(silent) {
@@ -2631,12 +2660,20 @@ function renderReminderRow(it) {
     return requestDriveToken(silent);
   }
 
-  async function driveApiFetch(url, options, silent) {
-    const token = await getDriveToken(silent);
-    const res = await fetch(url, {
-      ...(options || {}),
-      headers: { ...((options && options.headers) || {}), Authorization: `Bearer ${token}` },
-    });
+  async function driveApiFetch(url, options, silent, retried) {
+    const doFetch = async () => {
+      const token = await getDriveToken(silent);
+      return fetch(url, { ...(options || {}), headers: { ...((options && options.headers) || {}), Authorization: `Bearer ${token}` } });
+    };
+    let res = await doFetch();
+    // Tokens expiram durante uso prolongado do app. Renova uma vez antes de
+    // considerar que a conta foi desconectada.
+    if (res.status === 401 && !retried) {
+      gAccessToken = null;
+      gTokenExpiresAt = 0;
+      res = await driveApiFetch(url, options, silent, true);
+      return res;
+    }
     if (!res.ok) {
       const text = await res.text().catch(() => "");
       throw new Error(`Drive API ${res.status}: ${text}`);
@@ -2646,7 +2683,7 @@ function renderReminderRow(it) {
 
   async function driveFindOrCreateFolder(silent) {
     const q = encodeURIComponent(`name='${DRIVE_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
-    const listRes = await driveApiFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)`, {}, silent);
+    const listRes = await driveApiFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&orderBy=modifiedTime desc&pageSize=10&fields=files(id,name,modifiedTime)`, {}, silent);
     const listData = await listRes.json();
     if (listData.files && listData.files.length > 0) return listData.files[0].id;
     const createRes = await driveApiFetch(`https://www.googleapis.com/drive/v3/files`, {
@@ -2658,54 +2695,88 @@ function renderReminderRow(it) {
     return createData.id;
   }
 
-  async function driveFindFile(folderId, silent) {
-    const q = encodeURIComponent(`name='${DRIVE_FILE_NAME}' and '${folderId}' in parents and trashed=false`);
-    const res = await driveApiFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,modifiedTime)`, {}, silent);
+  async function driveListBackups(folderId, silent) {
+    const q = encodeURIComponent(`'${folderId}' in parents and trashed=false and (name='${DRIVE_FILE_NAME}' or name contains '${DRIVE_FILE_PREFIX}')`);
+    const res = await driveApiFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&orderBy=modifiedTime desc&pageSize=${DRIVE_MAX_BACKUPS + 1}&fields=files(id,name,modifiedTime,size)`, {}, silent);
     const data = await res.json();
-    return (data.files && data.files[0]) || null;
+    return data.files || [];
   }
 
   function buildBackupData() {
-    return { app: "patacare", version: 1, exportedAt: new Date().toISOString(), pets: STATE.pets, records: STATE.records, tutor: getTutor() };
+    return { app: "patacare", version: 2, exportedAt: new Date().toISOString(), pets: STATE.pets, records: STATE.records, tutor: getTutor() };
+  }
+
+  function isValidBackup(data) {
+    return !!data && Array.isArray(data.pets) && Array.isArray(data.records);
+  }
+  function hasBackupContent(data) { return isValidBackup(data) && (data.pets.length > 0 || data.records.length > 0); }
+  function driveBackupFileName() {
+    return `${DRIVE_FILE_PREFIX}${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+  }
+
+  async function driveReadBackup(file, silent) {
+    const res = await driveApiFetch(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`, {}, silent);
+    const data = await res.json();
+    if (!isValidBackup(data)) throw new Error("Backup inválido no Google Drive");
+    return data;
+  }
+
+  async function driveLatestUsableBackup(files, silent) {
+    let emptyBackup = null;
+    for (const file of files) {
+      try {
+        const data = await driveReadBackup(file, silent);
+        if (hasBackupContent(data)) return { file, data };
+        emptyBackup = emptyBackup || { file, data };
+      } catch (err) { /* tenta uma cópia anterior */ }
+    }
+    return emptyBackup;
   }
 
   async function driveUploadBackup(silent) {
     const folderId = await driveFindOrCreateFolder(silent);
-    const existing = await driveFindFile(folderId, silent);
+    await loadAll(); // nunca usa um STATE potencialmente desatualizado para backup
     const data = buildBackupData();
-    const metadata = existing ? { name: DRIVE_FILE_NAME } : { name: DRIVE_FILE_NAME, parents: [folderId] };
+    const existing = await driveListBackups(folderId, silent);
+    if (!hasBackupContent(data) && existing.length) {
+      const remote = await driveLatestUsableBackup(existing, silent);
+      if (remote && hasBackupContent(remote.data)) throw new Error("Proteção contra backup vazio");
+    }
+    const metadata = { name: driveBackupFileName(), parents: [folderId] };
     const boundary = "patacare-" + Date.now();
     const body =
       `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n` +
       `--${boundary}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(data)}\r\n` +
       `--${boundary}--`;
-    const url = existing
-      ? `https://www.googleapis.com/upload/drive/v3/files/${existing.id}?uploadType=multipart`
-      : `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`;
-    await driveApiFetch(url, {
-      method: existing ? "PATCH" : "POST",
+    await driveApiFetch(`https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`, {
+      method: "POST",
       headers: { "Content-Type": `multipart/related; boundary=${boundary}` },
       body,
     }, silent);
+    const allBackups = await driveListBackups(folderId, silent);
+    // Mantém um histórico curto para recuperação, sem deixar a pasta crescer sem limite.
+    await Promise.all(allBackups.slice(DRIVE_MAX_BACKUPS).map((file) =>
+      driveApiFetch(`https://www.googleapis.com/drive/v3/files/${file.id}`, { method: "DELETE" }, silent).catch(() => {})
+    ));
     localStorage.setItem(DRIVE_LAST_BACKUP_KEY, new Date().toISOString());
   }
 
   async function driveDownloadBackup(silent) {
     const folderId = await driveFindOrCreateFolder(silent);
-    const existing = await driveFindFile(folderId, silent);
-    if (!existing) throw new Error("Nenhum backup encontrado no Google Drive ainda.");
-    const res = await driveApiFetch(`https://www.googleapis.com/drive/v3/files/${existing.id}?alt=media`, {}, silent);
-    return res.json();
+    const backups = await driveListBackups(folderId, silent);
+    const backup = await driveLatestUsableBackup(backups, silent);
+    if (!backup) throw new Error("Nenhum backup válido encontrado no Google Drive.");
+    return backup.data;
   }
 
   async function driveConnect() {
     try {
       await getDriveToken(false); // abre o consentimento do Google
+      await driveUploadBackup(false);
       localStorage.setItem(DRIVE_CONNECTED_KEY, "1");
-      await driveUploadBackup(true);
       toast("Google Drive conectado e backup enviado!");
     } catch (err) {
-      toast("Não foi possível conectar ao Google Drive");
+      toast(err.message === "Proteção contra backup vazio" ? "Backup local está vazio; a cópia existente no Drive foi preservada" : "Não foi possível conectar ao Google Drive");
     }
   }
 
@@ -2724,13 +2795,14 @@ function renderReminderRow(it) {
   async function driveRestoreFlow() {
     try {
       const data = await driveDownloadBackup(false);
-      if (!data || !Array.isArray(data.pets) || !Array.isArray(data.records)) throw new Error("formato inválido");
+      if (!isValidBackup(data)) throw new Error("formato inválido");
       const ok = await confirmDialog({ title: "Restaurar do Google Drive?", message: "Isso vai substituir todos os dados atuais deste dispositivo pelos dados do backup salvo no Google Drive.", confirmLabel: "Restaurar e substituir", danger: true });
       if (!ok) return;
       await dbClear("pets"); await dbClear("records");
       for (const p of data.pets) await dbPut("pets", p);
       for (const r of data.records) await dbPut("records", r);
       if (data.tutor && typeof data.tutor === "object" && data.tutor.name) saveTutor(data.tutor);
+      else localStorage.removeItem(TUTOR_KEY);
       await loadAll();
       toast("Dados restaurados do Google Drive!");
       navigate("#/");
@@ -2776,13 +2848,14 @@ function renderReminderRow(it) {
     reader.onload = async () => {
       try {
         const data = JSON.parse(reader.result);
-        if (!data || !Array.isArray(data.pets) || !Array.isArray(data.records)) throw new Error("formato inválido");
+        if (!isValidBackup(data)) throw new Error("formato inválido");
         const ok = await confirmDialog({ title: "Importar backup?", message: "Isso vai substituir todos os dados atuais deste dispositivo pelos dados do arquivo selecionado.", confirmLabel: "Importar e substituir", danger: true });
         if (!ok) return;
         await dbClear("pets"); await dbClear("records");
         for (const p of data.pets) await dbPut("pets", p);
         for (const r of data.records) await dbPut("records", r);
         if (data.tutor && typeof data.tutor === "object" && data.tutor.name) saveTutor(data.tutor);
+        else localStorage.removeItem(TUTOR_KEY);
         await loadAll();
         toast("Backup importado com sucesso!");
         navigate("#/");

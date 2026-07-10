@@ -480,6 +480,129 @@
     toastTimer = setTimeout(() => el.remove(), 2400);
   }
 
+  /* ---------------------- Notificações do sistema ------------------------- */
+  // Como os dados do PataCare vivem apenas neste dispositivo, estes avisos são
+  // locais: funcionam ao abrir ou manter o PWA ativo. Push com o app fechado
+  // exige um servidor para disparar as mensagens e não é simulado aqui.
+  const NOTIFICATION_SETTINGS_KEY = "patacare-notification-settings";
+  const NOTIFICATION_SENT_KEY = "patacare-notification-sent";
+  let notificationTimer = null;
+
+  function notificationsSupported() {
+    return "Notification" in window && "serviceWorker" in navigator;
+  }
+  function getNotificationSettings() {
+    try { return JSON.parse(localStorage.getItem(NOTIFICATION_SETTINGS_KEY)) || { enabled: false }; }
+    catch (err) { return { enabled: false }; }
+  }
+  function saveNotificationSettings(settings) {
+    localStorage.setItem(NOTIFICATION_SETTINGS_KEY, JSON.stringify(settings));
+  }
+  function notificationPermission() {
+    return notificationsSupported() ? Notification.permission : "unsupported";
+  }
+  function getSentNotifications() {
+    try { return JSON.parse(localStorage.getItem(NOTIFICATION_SENT_KEY)) || {}; }
+    catch (err) { return {}; }
+  }
+  function wasNotificationSent(key) { return !!getSentNotifications()[key]; }
+  function markNotificationSent(key) {
+    const sent = getSentNotifications();
+    sent[key] = Date.now();
+    // Mantém somente o histórico recente usado para evitar avisos repetidos.
+    const cutoff = Date.now() - (14 * 86400000);
+    Object.keys(sent).forEach((id) => { if (sent[id] < cutoff) delete sent[id]; });
+    localStorage.setItem(NOTIFICATION_SENT_KEY, JSON.stringify(sent));
+  }
+  function showSystemNotification(title, options) {
+    if (notificationPermission() !== "granted") return Promise.resolve(false);
+    const payload = Object.assign({
+      body: "Abra o PataCare para ver os lembretes.",
+      icon: "icons/icon-192.png",
+      badge: "icons/icon-192.png",
+      tag: "patacare-reminder",
+      data: { url: "#/lembretes" }
+    }, options || {});
+    return navigator.serviceWorker.ready.then((registration) => {
+      registration.showNotification(title, payload);
+      return true;
+    }).catch(() => {
+      try { new Notification(title, payload); return true; } catch (err) { return false; }
+    });
+  }
+  function notificationCandidates() {
+    const care = [];
+    STATE.pets.forEach((pet) => {
+      careRecordsFor(pet.id).forEach((rec) => {
+        if (!rec.nextDate) return;
+        const status = dueStatus(rec.nextDate);
+        if (status.status === "overdue" || status.status === "soon") {
+          const cfg = categoryConfig(rec.category);
+          care.push({ pet, rec, status, title: cfg.title || "Lembrete" });
+        }
+      });
+    });
+    const doses = [];
+    STATE.pets.forEach((pet) => {
+      STATE.records.filter((r) => r.petId === pet.id && r.category === "medication").forEach((med) => {
+        const dose = med.doses && med.doses.find(isDosePending);
+        if (dose) doses.push({ pet, med, dose });
+      });
+    });
+    return { care, doses };
+  }
+  function runNotificationCheck() {
+    const settings = getNotificationSettings();
+    if (!settings.enabled || notificationPermission() !== "granted") return;
+    const now = new Date();
+    const today = todayISO();
+    const { care, doses } = notificationCandidates();
+    const overdue = care.filter((item) => item.status.status === "overdue");
+    const soon = care.filter((item) => item.status.status === "soon");
+    const dailyKey = "care:" + today;
+    if ((overdue.length || soon.length) && !wasNotificationSent(dailyKey)) {
+      const parts = [];
+      if (overdue.length) parts.push(`${overdue.length} atraso${overdue.length === 1 ? "" : "s"}`);
+      if (soon.length) parts.push(`${soon.length} próximo${soon.length === 1 ? "" : "s"}`);
+      showSystemNotification("Cuidados do seu pet", {
+        body: parts.join(" e ") + ". Toque para conferir os lembretes.",
+        tag: dailyKey
+      });
+      markNotificationSent(dailyKey);
+    }
+    doses.forEach(({ pet, med, dose }) => {
+      const dueAt = new Date(dose.scheduledAt).getTime();
+      const minutesFromNow = (dueAt - now.getTime()) / 60000;
+      // Notifica desde 15 min antes até 24 h depois da dose. O identificador
+      // garante um único aviso por dose, mesmo se o app for reaberto.
+      const key = "dose:" + med.id + ":" + dose.scheduledAt;
+      if (minutesFromNow <= 15 && minutesFromNow >= -1440 && !wasNotificationSent(key)) {
+        const when = minutesFromNow < -1 ? "está atrasada" : minutesFromNow <= 1 ? "é agora" : `é em ${Math.ceil(minutesFromNow)} min`;
+        showSystemNotification(`Hora do remédio de ${pet.name}`, {
+          body: `${med.name}: a dose ${when}.`,
+          tag: key
+        });
+        markNotificationSent(key);
+      }
+    });
+  }
+  function scheduleNotificationCheck() {
+    clearTimeout(notificationTimer);
+    runNotificationCheck();
+    if (getNotificationSettings().enabled && notificationPermission() === "granted") {
+      notificationTimer = setTimeout(scheduleNotificationCheck, 15 * 60000);
+    }
+  }
+  async function enableSystemNotifications() {
+    if (!notificationsSupported()) { toast("Este navegador não oferece notificações do sistema"); return false; }
+    const permission = await Notification.requestPermission();
+    if (permission !== "granted") { toast("Permissão não concedida. Você pode liberar nas configurações do navegador."); return false; }
+    saveNotificationSettings({ enabled: true });
+    scheduleNotificationCheck();
+    toast("Notificações do sistema ativadas!");
+    return true;
+  }
+
   /* ------------------------------- Confirm ---------------------------------- */
   function confirmDialog({ title, message, confirmLabel, danger }) {
     return new Promise((resolve) => {
@@ -2147,6 +2270,49 @@ function renderReminderRow(it) {
     });
     main.appendChild(themeCard);
 
+    const notificationTitle = document.createElement("div");
+    notificationTitle.className = "section-title";
+    notificationTitle.textContent = "Notificações";
+    main.appendChild(notificationTitle);
+
+    const notificationCard = document.createElement("div");
+    notificationCard.className = "card";
+    notificationCard.style.marginBottom = "18px";
+    const supported = notificationsSupported();
+    const permission = notificationPermission();
+    const notificationEnabled = getNotificationSettings().enabled && permission === "granted";
+    const notificationStatus = !supported ? "Indisponível neste navegador" : permission === "denied" ? "Bloqueadas no navegador" : notificationEnabled ? "Ativadas neste dispositivo" : "Desativadas";
+    notificationCard.innerHTML = `
+      <div class="settings-row" style="padding-top:0;border-bottom:none">
+        <div class="lbl"><div class="t">Lembretes no sistema</div><div class="s">${notificationStatus}</div></div>
+        <label class="switch">
+          <input type="checkbox" id="notification-enabled" ${notificationEnabled ? "checked" : ""} ${!supported || permission === "denied" ? "disabled" : ""}>
+          <span class="track"></span>
+        </label>
+      </div>
+      <p style="font-size:12.5px;color:var(--text-muted);line-height:1.5;margin:10px 0 14px">
+        Você recebe avisos de cuidados próximos, atrasados e horários de medicamento ao abrir ou deixar o PataCare ativo. Para avisos com o app totalmente fechado, é necessário configurar um serviço de push.
+      </p>
+      ${supported && permission === "denied" ? `<p style="font-size:12.5px;color:var(--red);line-height:1.45;margin-bottom:12px">Libere as notificações nas configurações do navegador e volte ao app.</p>` : ""}
+      <button class="btn btn-secondary btn-block" id="btn-notification-test" ${!notificationEnabled ? "disabled" : ""}>${ICONS.bell} Enviar notificação de teste</button>`;
+    main.appendChild(notificationCard);
+    const notificationToggle = notificationCard.querySelector("#notification-enabled");
+    notificationToggle.addEventListener("change", async () => {
+      if (notificationToggle.checked) {
+        const enabled = await enableSystemNotifications();
+        if (!enabled) notificationToggle.checked = false;
+      } else {
+        saveNotificationSettings({ enabled: false });
+        clearTimeout(notificationTimer);
+        toast("Notificações desativadas neste dispositivo");
+      }
+      main.innerHTML = "";
+      renderSettings(main);
+    });
+    notificationCard.querySelector("#btn-notification-test").addEventListener("click", () => {
+      showSystemNotification("PataCare está pronto!", { body: "Você receberá lembretes dos cuidados do seu pet neste dispositivo.", tag: "patacare-test" });
+    });
+
     if (STATE.pets.length > 0) {
       const vetTitle = document.createElement("div");
       vetTitle.className = "section-title";
@@ -3637,6 +3803,10 @@ function renderReminderRow(it) {
     loadAll().then(() => {
       render();
       registerServiceWorker();
+      scheduleNotificationCheck();
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") scheduleNotificationCheck();
+      });
       driveAutoBackupOnOpen();
     }).catch((err) => {
       document.getElementById("app").innerHTML = `<div class="empty-state"><h3>Não foi possível carregar</h3><p>${escapeHtml(err.message || "Erro desconhecido")}</p></div>`;

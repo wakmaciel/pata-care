@@ -14,7 +14,7 @@ Um app web (PWA) para gerenciar a saúde e os cuidados dos seus pets: vacinas (c
 - **Medidas para roupas**: registre pescoço, peito/tórax e comprimento do dorso do pet (em cm) direto no perfil, para consultar rapidamente na hora de comprar roupas, coleiras e peitorais.
 - **Peso**: histórico com gráfico de evolução e variação em relação ao registro anterior.
 - **Cio** (apenas para pets fêmeas): início, fim e intervalo médio entre os ciclos.
-- **Lembretes**: uma tela só com tudo que está atrasado ou vencendo (vacinas, antipulgas, vermífugos e doses de medicamento) de todos os pets — pode marcar a dose do remédio direto por ali.
+- **Lembretes e notificações do sistema**: uma tela só com tudo que está atrasado ou vencendo (vacinas, antipulgas, vermífugos e doses de medicamento) de todos os pets — e, com sua permissão, o PataCare mostra notificações nativas ao abrir ou manter o app ativo.
 - **Relatório para o veterinário**: gera um PDF (via impressão do navegador) com o resumo completo de um pet ou de todos, pronto para mostrar ou enviar na consulta.
 - **Modo claro / escuro / automático** (segue o sistema do iOS).
 - **Backup**: exporta tudo em um arquivo `.json` para guardar ou transferir para outro aparelho, e importa quando quiser restaurar.
@@ -77,7 +77,7 @@ O código é organizado para ser fácil de ajustar:
 - **Ícones**: são todos SVGs simples, no objeto `ICONS` no topo do `app.js`.
 
 Ideias para próximas versões (é só pedir e a gente constrói junto):
-- Notificações push reais (hoje a tela de Lembretes já avisa, mas só quando você abre o app).
+- Notificações push reais com o app totalmente fechado (exige adicionar um servidor/serviço de push, pois o PataCare atual não envia dados para uma nuvem).
 - Gráfico de peso comparando várias fases (filhote/adulto).
 - Suporte a mais de um cuidador (ex: backup automático na nuvem).
 

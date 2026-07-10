@@ -34,6 +34,19 @@ self.addEventListener("activate", (event) => {
   );
 });
 
+// Ao tocar num aviso do sistema, traz o PataCare para frente já nos Lembretes.
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const targetUrl = new URL((event.notification.data && event.notification.data.url) || "#/lembretes", self.registration.scope).href;
+  event.waitUntil(
+    clients.matchAll({ type: "window", includeUncontrolled: true }).then((windows) => {
+      const existing = windows.find((client) => client.url.split("#")[0] === targetUrl.split("#")[0]);
+      if (existing) return existing.focus().then(() => existing.navigate(targetUrl));
+      return clients.openWindow(targetUrl);
+    })
+  );
+});
+
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
   // Não mexe em chamadas de fontes/externas; deixa passar direto pela rede.

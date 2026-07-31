@@ -26,12 +26,55 @@ import {
 } from "@/services/drive";
 import { exportBackup, importBackup } from "@/services/backup";
 import { generateVetReport } from "@/services/vetReport";
+import { getRemindersSettings, saveRemindersSettings } from "@/services/reminders";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
-import { SectionTitle, Switch } from "@/components/ui/Field";
+import { Field, SectionTitle, Switch } from "@/components/ui/Field";
+import { RemindersHowTo } from "@/features/forms/MedicationRemindersSheet";
 import { TutorFormSheet } from "@/features/forms/TutorFormSheet";
 import { PetCardSheet } from "@/features/forms/PetCardSheet";
 import type { ThemeMode } from "@/types";
+
+/** Lista e atalho usados ao mandar as doses de medicamento para os Lembretes. */
+function RemindersCard() {
+  const saved = getRemindersSettings();
+  const [listName, setListName] = useState(saved.listName);
+  const [shortcutName, setShortcutName] = useState(saved.shortcutName);
+  const [showHowTo, setShowHowTo] = useState(false);
+  const persist = () =>
+    saveRemindersSettings({ ...getRemindersSettings(), listName, shortcutName });
+
+  return (
+    <div className="card" style={{ marginBottom: 18 }}>
+      <p style={{ fontSize: 13.5, color: "var(--text-muted)", lineHeight: 1.5, marginBottom: 14 }}>
+        Ao cadastrar um medicamento, o PataCare manda cada dose para o app Lembretes do iPhone
+        através do app Atalhos — assim os horários aparecem junto com a sua lista de pet.
+      </p>
+      <Field label="Lista dos Lembretes">
+        <input
+          type="text"
+          placeholder="Ex: Pet"
+          value={listName}
+          onChange={(e) => setListName(e.target.value)}
+          onBlur={persist}
+        />
+      </Field>
+      <Field label="Nome do atalho (app Atalhos)">
+        <input
+          type="text"
+          placeholder="Ex: PataCare Lembretes"
+          value={shortcutName}
+          onChange={(e) => setShortcutName(e.target.value)}
+          onBlur={persist}
+        />
+      </Field>
+      <Button variant="secondary" block onClick={() => setShowHowTo((v) => !v)}>
+        <Icon name="info" /> {showHowTo ? "Ocultar" : "Ver"} passo a passo do atalho
+      </Button>
+      {showHowTo && <RemindersHowTo listName={listName} shortcutName={shortcutName} />}
+    </div>
+  );
+}
 
 export function SettingsView() {
   const { pets, clearAll } = useDataStore();
@@ -194,6 +237,9 @@ export function SettingsView() {
           <Icon name="bell" /> Enviar notificação de teste
         </Button>
       </div>
+
+      <SectionTitle>Lembretes do iPhone</SectionTitle>
+      <RemindersCard />
 
       {pets.length > 0 && (
         <>

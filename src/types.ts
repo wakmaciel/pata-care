@@ -115,6 +115,8 @@ export interface ConsultationRecord extends BaseRecord {
   reason: string;
   hasReturn: boolean;
   nextDate: string | null;
+  /** receitas/atestados — opcional: consultas da v1 foram salvas sem o campo */
+  attachments?: Attachment[];
 }
 
 export type DoseStatus = "pending" | "done" | "missed";

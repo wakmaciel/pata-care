@@ -172,6 +172,11 @@ function buildVetReportSection(pet: Pet): string {
         : ""),
     escapeHtml(r.reason || "—"),
     nw(r.hasReturn && r.nextDate ? fmtDate(r.nextDate) : "—"),
+    nw(
+      r.attachments && r.attachments.length
+        ? `${r.attachments.length} anexo${r.attachments.length === 1 ? "" : "s"} (ver no app)`
+        : "—"
+    ),
   ]);
   const examRows = exams.map((r) => [
     escapeHtml(r.examType || "Exame"),
@@ -209,7 +214,7 @@ function buildVetReportSection(pet: Pet): string {
       ${table(["Vacina", "Data", "Dose", "Próxima"], vacRows)}
 
       <h3>Consultas</h3>
-      ${table(["Data", "Veterinário(a)", "Motivo", "Retorno"], consultRows)}
+      ${table(["Data", "Veterinário(a)", "Motivo", "Retorno", "Anexos"], consultRows)}
 
       <h3>Exames</h3>
       ${table(["Exame", "Data", "Veterinário(a)/Clínica", "Anexos"], examRows)}

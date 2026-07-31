@@ -7,8 +7,9 @@ import { useDataStore } from "@/store/data";
 import { useUiStore } from "@/store/ui";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
-import { Field, FieldRow } from "@/components/ui/Field";
+import { Field, FieldRow, SwitchRow } from "@/components/ui/Field";
 import { SheetHeader } from "@/components/ui/OverlayHost";
+import { MedicationRemindersSheet } from "@/features/forms/MedicationRemindersSheet";
 import type { MedicationForm, MedicationRecord } from "@/types";
 
 export function MedicationFormSheet({
@@ -19,8 +20,9 @@ export function MedicationFormSheet({
   existing: MedicationRecord | null;
 }) {
   const isEdit = !!existing;
-  const { records, putRecord, deleteRecord } = useDataStore();
-  const { closeSheet, toast, confirm } = useUiStore();
+  const { pets, records, putRecord, deleteRecord } = useDataStore();
+  const { closeSheet, openSheet, toast, confirm } = useUiStore();
+  const pet = pets.find((p) => p.id === petId);
 
   const now = new Date();
   const defaultStart = todayISO() + "T" + pad(now.getHours()) + ":" + pad(now.getMinutes());
@@ -34,6 +36,7 @@ export function MedicationFormSheet({
   const [totalDirty, setTotalDirty] = useState(isEdit);
   const [totalManual, setTotalManual] = useState(existing ? String(existing.totalDoses) : "");
   const [notes, setNotes] = useState(existing?.notes ?? "");
+  const [wantsReminders, setWantsReminders] = useState(!isEdit);
 
   const nameSuggestions = useMemo(() => distinctValues(records, "medication", "name"), [records]);
 
@@ -99,8 +102,10 @@ export function MedicationFormSheet({
       notes: notes.trim(),
     };
     await putRecord(rec);
-    closeSheet();
     toast(isEdit ? "Medicamento atualizado!" : "Medicamento adicionado!");
+    // com os lembretes ligados, a folha vira a tela de envio em vez de fechar
+    if (wantsReminders && pet) openSheet(<MedicationRemindersSheet med={rec} pet={pet} />);
+    else closeSheet();
   };
 
   const onDelete = async () => {
@@ -197,6 +202,12 @@ export function MedicationFormSheet({
           onChange={(e) => setNotes(e.target.value)}
         />
       </Field>
+      <SwitchRow
+        label="Lembretes no iPhone"
+        sub="Ao salvar, envia cada dose para o app Lembretes (lista Pet)"
+        checked={wantsReminders}
+        onChange={setWantsReminders}
+      />
       <Button block onClick={onSave}>
         <Icon name="check" /> Salvar
       </Button>

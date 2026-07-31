@@ -7,8 +7,9 @@ import { useUiStore } from "@/store/ui";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { Field, FieldRow, SwitchRow } from "@/components/ui/Field";
+import { AttachmentsField } from "@/components/ui/AttachmentsField";
 import { SheetHeader } from "@/components/ui/OverlayHost";
-import type { ConsultationRecord } from "@/types";
+import type { Attachment, ConsultationRecord } from "@/types";
 
 export function ConsultationFormSheet({
   petId,
@@ -28,6 +29,7 @@ export function ConsultationFormSheet({
   const [notes, setNotes] = useState(existing?.notes ?? "");
   const [hasReturn, setHasReturn] = useState(!!existing?.nextDate);
   const [returnDate, setReturnDate] = useState(existing?.nextDate ?? "");
+  const [attachments, setAttachments] = useState<Attachment[]>(existing?.attachments ?? []);
 
   const vetSuggestions = useMemo(() => distinctValues(records, "consultation", "vet"), [records]);
   const crmSuggestions = useMemo(() => distinctValues(records, "consultation", "crm"), [records]);
@@ -59,6 +61,7 @@ export function ConsultationFormSheet({
       notes: notes.trim(),
       hasReturn,
       nextDate: hasReturn ? returnDate : null,
+      attachments,
     };
     await putRecord(rec);
     closeSheet();
@@ -131,6 +134,9 @@ export function ConsultationFormSheet({
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
         />
+      </Field>
+      <Field label="Receitas e anexos (imagem ou PDF)">
+        <AttachmentsField value={attachments} onChange={setAttachments} addLabel="Anexar receita" />
       </Field>
       <SwitchRow
         label="Agendar retorno?"

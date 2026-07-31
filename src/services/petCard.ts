@@ -1,17 +1,101 @@
-/* Carteirinha de identificação do pet — gera HTML imprimível numa nova aba (PDF via impressão).
-   Só dados de identificação do pet e do tutor: é o que se mostra numa primeira consulta. */
+/* Carteirinha do pet — cartão de identificação no formato de um RG, desenhado em <canvas>
+   para poder ser salvo e compartilhado como imagem (e não só impresso). */
 import { calcAge, fmtDate } from "@/lib/dates";
-import { petsSorted, recordsFor } from "@/domain/care";
+import { recordsFor } from "@/domain/care";
+import { normalizeText } from "@/lib/utils";
 import { useDataStore } from "@/store/data";
 import { useTutorStore } from "@/store/tutor";
-import { toast } from "@/store/ui";
-import type { Pet, Tutor, WeightRecord } from "@/types";
+import type { Pet, WeightRecord } from "@/types";
 
-function escapeHtml(s: unknown): string {
-  return String(s == null ? "" : s).replace(
-    /[&<>"']/g,
-    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] as string
-  );
+/** Medidas em px de projeto — a proporção de um cartão de identidade (85,6 × 54 mm). */
+const W = 340;
+const H = 214;
+/** Exportamos em 3x para a imagem ficar nítida em tela cheia e impressa. */
+const SCALE = 3;
+
+const FONT = "-apple-system, 'Segoe UI', Roboto, Arial, sans-serif";
+const MONO = "ui-monospace, 'Courier New', monospace";
+
+const INK = "#3A2236";
+const MUTED = "#8a7480";
+const LABEL = "#a3919b";
+const PINK = "#F2598A";
+const PINK_DARK = "#C23A6B";
+const PINK_SOFT = "#FFEFF3";
+const LINE = "#F1E4EA";
+
+type Ctx = CanvasRenderingContext2D;
+
+function font(weight: number, size: number, family = FONT): string {
+  return `${weight} ${size}px ${family}`;
+}
+
+function roundRectPath(ctx: Ctx, x: number, y: number, w: number, h: number, r: number) {
+  const rad = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + rad, y);
+  ctx.arcTo(x + w, y, x + w, y + h, rad);
+  ctx.arcTo(x + w, y + h, x, y + h, rad);
+  ctx.arcTo(x, y + h, x, y, rad);
+  ctx.arcTo(x, y, x + w, y, rad);
+  ctx.closePath();
+}
+
+function ellipsize(ctx: Ctx, text: string, maxW: number): string {
+  if (ctx.measureText(text).width <= maxW) return text;
+  let t = text;
+  while (t.length > 1 && ctx.measureText(t + "…").width > maxW) t = t.slice(0, -1);
+  return t + "…";
+}
+
+/** Rótulo pequeno em caixa alta + valor, como nos campos de um documento. */
+function drawField(
+  ctx: Ctx,
+  label: string,
+  value: string,
+  x: number,
+  y: number,
+  maxW: number,
+  opts?: { mono?: boolean; valueSize?: number }
+) {
+  ctx.textBaseline = "top";
+  ctx.fillStyle = LABEL;
+  ctx.font = font(700, 7);
+  ctx.fillText(ellipsize(ctx, label.toUpperCase(), maxW), x, y);
+  ctx.fillStyle = INK;
+  ctx.font = font(600, opts?.valueSize ?? 11, opts?.mono ? MONO : FONT);
+  ctx.fillText(ellipsize(ctx, value, maxW), x, y + 10);
+}
+
+function loadImage(src: string): Promise<HTMLImageElement | null> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+}
+
+/** Desenha a imagem preenchendo o quadrado (recorte central), como object-fit: cover. */
+function drawPhotoCover(ctx: Ctx, img: HTMLImageElement, x: number, y: number, size: number) {
+  const ratio = Math.max(size / img.width, size / img.height);
+  const dw = img.width * ratio;
+  const dh = img.height * ratio;
+  ctx.drawImage(img, x + (size - dw) / 2, y + (size - dh) / 2, dw, dh);
+}
+
+function speciesLabel(pet: Pet): string {
+  return pet.species === "cat" ? "Gato" : pet.species === "dog" ? "Cão" : "Outro";
+}
+
+function speciesEmoji(pet: Pet): string {
+  return pet.species === "cat" ? "🐱" : pet.species === "dog" ? "🐶" : "🐾";
+}
+
+function neuteredLabel(pet: Pet): string {
+  // concorda com o sexo do pet: "castrado(a)" fica burocrático num documento
+  if (pet.neutered) return pet.sex === "F" ? "castrada" : "castrado";
+  return pet.sex === "F" ? "não castrada" : "não castrado";
 }
 
 /** Número da carteirinha derivado do id do pet — estável entre gerações. */
@@ -21,213 +105,167 @@ function cardNumber(pet: Pet): string {
   return `${tail.slice(0, 4)}-${tail.slice(4)}`;
 }
 
-export function generatePetCard(selection: string) {
-  const { pets: allPets } = useDataStore.getState();
-  const pets =
-    selection === "all" ? petsSorted(allPets) : allPets.filter((p) => p.id === selection);
-  if (pets.length === 0) {
-    toast("Selecione um pet");
-    return;
-  }
-
-  const tutor = useTutorStore.getState().tutor;
-  const cards = pets.map((pet) => buildCard(pet, tutor)).join("");
-  const title =
-    pets.length === 1 && pets[0] ? `Carteirinha — ${pets[0].name}` : "Carteirinhas PataCare";
-
-  const html = `<!DOCTYPE html>
-<html lang="pt-BR"><head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${escapeHtml(title)}</title>
-<style>
-  *{ box-sizing: border-box; }
-  html{ -webkit-text-size-adjust: 100%; }
-  body{ font-family: -apple-system, 'Segoe UI', Arial, sans-serif; color:#2b2b2b; background:#f6f2f4; margin:0; padding:18px 14px 48px; }
-  .wrap{ max-width:460px; margin:0 auto; }
-  .print-bar{ position:sticky; top:0; z-index:2; background:#f6f2f4; padding:8px 0 14px; text-align:right; }
-  .print-bar button{ background:#F2598A; color:#fff; border:none; padding:10px 18px; border-radius:20px; font-weight:700; font-size:13px; cursor:pointer; }
-  .card{ background:#fff; border-radius:20px; overflow:hidden; box-shadow:0 6px 24px rgba(90,40,65,.12); border:1px solid #f0e2e8; margin-bottom:22px; }
-  .card-head{ background:linear-gradient(135deg,#F2598A,#C23A6B); color:#fff; padding:16px 20px; display:flex; align-items:center; justify-content:space-between; gap:10px; }
-  .card-head .brand{ font-size:15px; font-weight:800; letter-spacing:.2px; }
-  .card-head .sub{ font-size:10.5px; opacity:.9; margin-top:2px; letter-spacing:.6px; text-transform:uppercase; }
-  .card-head .num{ font-size:10.5px; font-family: ui-monospace, 'Courier New', monospace; background:rgba(255,255,255,.2); padding:5px 9px; border-radius:20px; white-space:nowrap; }
-  .identity{ display:flex; gap:16px; align-items:center; padding:18px 20px 14px; border-bottom:1px solid #f4eef1; }
-  .photo{ width:96px; height:96px; border-radius:50%; object-fit:cover; border:3px solid #FFD3E0; flex:none; background:#FFEFF3; }
-  .photo.placeholder{ display:flex; align-items:center; justify-content:center; font-size:38px; }
-  .identity .name{ font-size:23px; font-weight:800; color:#3A2236; line-height:1.15; word-break:break-word; }
-  .identity .tagline{ font-size:12.5px; color:#8a7480; margin-top:5px; line-height:1.45; }
-  .chips{ margin-top:8px; display:flex; flex-wrap:wrap; gap:5px; }
-  .chip{ font-size:10.5px; font-weight:700; color:#C23A6B; background:#FFEFF3; border-radius:20px; padding:3px 9px; }
-  .section{ padding:14px 20px 4px; }
-  .section h3{ font-size:10.5px; letter-spacing:.8px; text-transform:uppercase; color:#C23A6B; margin:0 0 10px; }
-  .grid{ display:grid; grid-template-columns:1fr 1fr; gap:12px 14px; }
-  .grid .full{ grid-column:1 / -1; }
-  .lbl{ font-size:10px; letter-spacing:.4px; text-transform:uppercase; color:#a3919b; margin-bottom:2px; }
-  .val{ font-size:13.5px; font-weight:600; color:#3A2236; word-break:break-word; }
-  .val.mono{ font-family: ui-monospace, 'Courier New', monospace; font-size:13px; letter-spacing:.4px; }
-  .tutor{ padding:14px 20px 16px; background:#FDF7F9; border-top:1px solid #f4eef1; }
-  .tutor-row{ display:flex; align-items:center; gap:12px; margin-bottom:12px; }
-  .tutor-photo{ width:44px; height:44px; border-radius:50%; object-fit:cover; border:2px solid #FFD3E0; flex:none; background:#FFEFF3; }
-  .tutor-photo.placeholder{ display:flex; align-items:center; justify-content:center; font-size:18px; }
-  .tutor-name{ font-size:15px; font-weight:800; color:#3A2236; word-break:break-word; }
-  .tutor-empty{ font-size:12.5px; color:#a3919b; font-style:italic; }
-  .card-foot{ padding:11px 20px 14px; font-size:10px; color:#a3919b; line-height:1.5; border-top:1px solid #f4eef1; }
-  @media (max-width: 380px){
-    .grid{ grid-template-columns:1fr; }
-    .photo{ width:78px; height:78px; }
-    .identity .name{ font-size:20px; }
-  }
-  @media print{
-    .print-bar{ display:none; }
-    body{ background:#fff; padding:0; }
-    .wrap{ max-width:100%; }
-    .card{ box-shadow:none; break-inside:avoid; page-break-inside:avoid; margin-bottom:0; }
-    .card + .card{ page-break-before:always; }
-    .card-head, .tutor{ -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-    @page{ margin: 14mm; }
-  }
-</style></head>
-<body>
-  <div class="wrap">
-    <div class="print-bar"><button onclick="window.print()">Imprimir / Salvar PDF</button></div>
-    ${cards}
-  </div>
-</body></html>`;
-
-  const w = window.open("", "_blank");
-  if (!w) {
-    toast("Permita pop-ups para gerar a carteirinha");
-    return;
-  }
-  w.document.open();
-  w.document.write(html);
-  w.document.close();
+export function petCardFileName(pet: Pet): string {
+  const slug = normalizeText(pet.name)
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+  return `carteirinha-${slug || "pet"}.png`;
 }
 
-function buildCard(pet: Pet, tutor: Tutor | null): string {
-  const { records } = useDataStore.getState();
-  const lastWeight = recordsFor<WeightRecord>(records, pet.id, "weight")[0];
-  const m = pet.measurements;
-  const species = pet.species === "cat" ? "Gato" : pet.species === "dog" ? "Cão" : "Outro";
-  const emoji = pet.species === "cat" ? "🐱" : pet.species === "dog" ? "🐶" : "🐾";
-  const age = calcAge(pet.birthDate);
-  const sex = pet.sex === "F" ? "Fêmea" : "Macho";
-  // concorda com o sexo do pet: numa carteirinha "castrado(a)" fica burocrático
-  const neutered = pet.neutered
-    ? pet.sex === "F"
-      ? "Castrada"
-      : "Castrado"
-    : pet.sex === "F"
-      ? "Não castrada"
-      : "Não castrado";
+export async function renderPetCard(pet: Pet): Promise<HTMLCanvasElement> {
+  const canvas = document.createElement("canvas");
+  canvas.width = W * SCALE;
+  canvas.height = H * SCALE;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Canvas indisponível neste navegador");
+  ctx.scale(SCALE, SCALE);
 
-  const photo = pet.photo
-    ? `<img class="photo" src="${escapeHtml(pet.photo)}" alt="Foto de ${escapeHtml(pet.name)}">`
-    : `<div class="photo placeholder">${emoji}</div>`;
+  const tutor = useTutorStore.getState().tutor;
+  const lastWeight = recordsFor<WeightRecord>(useDataStore.getState().records, pet.id, "weight")[0];
+  const photo = pet.photo ? await loadImage(pet.photo) : null;
 
-  // a espécie já aparece nos chips — a linha de apoio só repete o que agrega
-  const tagline = [pet.breed, age].filter(Boolean).join(" · ");
+  const pad = 14;
+  const headH = 34;
+  const footH = 36;
 
-  const chips = [species, sex, neutered]
-    .map((c) => `<span class="chip">${escapeHtml(c)}</span>`)
-    .join("");
+  // fundo do cartão (tudo é desenhado dentro do recorte arredondado)
+  ctx.save();
+  roundRectPath(ctx, 0, 0, W, H, 14);
+  ctx.clip();
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(0, 0, W, H);
 
-  function field(label: string, value: string, opts?: { full?: boolean; mono?: boolean }): string {
-    return `<div${opts?.full ? ' class="full"' : ""}>
-        <div class="lbl">${escapeHtml(label)}</div>
-        <div class="val${opts?.mono ? " mono" : ""}">${value}</div>
-      </div>`;
+  /* ------------------------------- cabeçalho ------------------------------- */
+  const grad = ctx.createLinearGradient(0, 0, W, headH);
+  grad.addColorStop(0, PINK);
+  grad.addColorStop(1, PINK_DARK);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, headH);
+
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = "#fff";
+  ctx.font = font(800, 12);
+  ctx.fillText("🐾 PataCare", pad, headH / 2 - 5);
+  ctx.font = font(600, 7);
+  ctx.globalAlpha = 0.9;
+  ctx.fillText("CARTEIRINHA DE IDENTIFICAÇÃO", pad, headH / 2 + 7);
+  ctx.globalAlpha = 1;
+
+  const num = `Nº ${cardNumber(pet)}`;
+  ctx.font = font(600, 8, MONO);
+  const numW = ctx.measureText(num).width;
+  ctx.fillStyle = "rgba(255,255,255,.22)";
+  roundRectPath(ctx, W - pad - numW - 14, headH / 2 - 8, numW + 14, 16, 8);
+  ctx.fill();
+  ctx.fillStyle = "#fff";
+  ctx.fillText(num, W - pad - numW - 7, headH / 2);
+
+  /* ---------------------------------- foto --------------------------------- */
+  const photoSize = 80;
+  const photoY = headH + 12;
+  ctx.save();
+  roundRectPath(ctx, pad, photoY, photoSize, photoSize, 12);
+  ctx.clip();
+  ctx.fillStyle = PINK_SOFT;
+  ctx.fillRect(pad, photoY, photoSize, photoSize);
+  if (photo) {
+    drawPhotoCover(ctx, photo, pad, photoY, photoSize);
+  } else {
+    ctx.font = font(400, 40);
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = PINK_DARK;
+    ctx.fillText(speciesEmoji(pet), pad + photoSize / 2, photoY + photoSize / 2 + 2);
+    ctx.textAlign = "left";
   }
+  ctx.restore();
+  ctx.strokeStyle = "#FFD3E0";
+  ctx.lineWidth = 1.5;
+  roundRectPath(ctx, pad, photoY, photoSize, photoSize, 12);
+  ctx.stroke();
 
-  const measures = m
-    ? [
-        m.neck ? `Pescoço ${m.neck} cm` : "",
-        m.chest ? `Peito ${m.chest} cm` : "",
-        m.length ? `Dorso ${m.length} cm` : "",
-      ]
-        .filter(Boolean)
-        .join(" · ")
-    : "";
+  /* ------------------------------ dados do pet ----------------------------- */
+  const colX = pad + photoSize + 14;
+  const colW = W - colX - pad;
+  ctx.textBaseline = "top";
+  ctx.textAlign = "left";
 
-  const fields = [
-    field("Espécie", escapeHtml(species)),
-    field("Raça", escapeHtml(pet.breed || "Não informada")),
-    field("Nascimento", pet.birthDate ? fmtDate(pet.birthDate) : "Não informado"),
-    field("Idade", age || "Não informada"),
-    field("Sexo", `${sex} · ${neutered.toLowerCase()}`),
-    field(
-      "Peso atual",
-      lastWeight
-        ? `${lastWeight.weight} kg <span style="font-weight:500;color:#a3919b">(${fmtDate(lastWeight.date)})</span>`
-        : "Não informado"
-    ),
-    field("Microchip", escapeHtml(pet.microchip || "Não informado"), {
-      full: true,
+  // o nome é o elemento dominante do cartão: diminui a fonte antes de cortar
+  let nameSize = 21;
+  ctx.font = font(800, nameSize);
+  while (nameSize > 14 && ctx.measureText(pet.name).width > colW) {
+    nameSize -= 1;
+    ctx.font = font(800, nameSize);
+  }
+  ctx.fillStyle = INK;
+  ctx.fillText(ellipsize(ctx, pet.name, colW), colX, photoY - 2 + (21 - nameSize));
+
+  ctx.font = font(500, 10);
+  ctx.fillStyle = MUTED;
+  const subtitle = [speciesLabel(pet), pet.breed].filter(Boolean).join(" · ");
+  ctx.fillText(ellipsize(ctx, subtitle, colW), colX, photoY + 22);
+
+  const halfW = (colW - 8) / 2;
+  const rowY = photoY + 40;
+  drawField(ctx, "Nascimento", pet.birthDate ? fmtDate(pet.birthDate) : "—", colX, rowY, halfW);
+  drawField(ctx, "Idade", calcAge(pet.birthDate) || "—", colX + halfW + 8, rowY, halfW);
+  drawField(
+    ctx,
+    "Sexo",
+    `${pet.sex === "F" ? "Fêmea" : "Macho"} · ${neuteredLabel(pet)}`,
+    colX,
+    rowY + 26,
+    halfW,
+    { valueSize: 10 }
+  );
+  drawField(
+    ctx,
+    "Peso",
+    lastWeight ? `${lastWeight.weight.toLocaleString("pt-BR")} kg` : "—",
+    colX + halfW + 8,
+    rowY + 26,
+    halfW
+  );
+
+  /* -------------------------------- microchip ------------------------------ */
+  const chipY = photoY + photoSize + 12;
+  ctx.fillStyle = PINK_SOFT;
+  roundRectPath(ctx, pad, chipY, W - pad * 2, 28, 8);
+  ctx.fill();
+  drawField(
+    ctx,
+    "Microchip",
+    pet.microchip || "Não informado",
+    pad + 10,
+    chipY + 5,
+    W - pad * 2 - 20,
+    {
       mono: !!pet.microchip,
-    }),
-    measures ? field("Medidas", escapeHtml(measures), { full: true }) : "",
-    pet.notes ? field("Observações", escapeHtml(pet.notes), { full: true }) : "",
-  ]
-    .filter(Boolean)
-    .join("");
+      valueSize: 11,
+    }
+  );
 
-  const tutorFields = tutor
-    ? [
-        tutor.phone ? field("Telefone", escapeHtml(tutor.phone)) : "",
-        tutor.city ? field("Cidade", escapeHtml(tutor.city)) : "",
-        tutor.email ? field("E-mail", escapeHtml(tutor.email), { full: true }) : "",
-      ]
-        .filter(Boolean)
-        .join("")
-    : "";
+  /* ---------------------------------- tutor -------------------------------- */
+  ctx.fillStyle = "#FDF7F9";
+  ctx.fillRect(0, H - footH, W, footH);
+  ctx.fillStyle = LINE;
+  ctx.fillRect(0, H - footH, W, 1);
+  const tutorLine = tutor
+    ? [tutor.name, tutor.phone].filter(Boolean).join(" · ")
+    : "Cadastre seu perfil no PataCare";
+  drawField(ctx, "Tutor(a) responsável", tutorLine, pad, H - footH + 9, W - pad * 2, {
+    valueSize: 11,
+  });
 
-  const tutorBlock = tutor
-    ? `<div class="tutor-row">
-        ${
-          tutor.photo
-            ? `<img class="tutor-photo" src="${escapeHtml(tutor.photo)}" alt="Foto do tutor">`
-            : `<div class="tutor-photo placeholder">👤</div>`
-        }
-        <div style="min-width:0">
-          <div class="lbl">Tutor(a) responsável</div>
-          <div class="tutor-name">${escapeHtml(tutor.name)}</div>
-        </div>
-      </div>
-      ${tutorFields ? `<div class="grid">${tutorFields}</div>` : ""}`
-    : `<div class="lbl" style="margin-bottom:4px">Tutor(a) responsável</div>
-       <div class="tutor-empty">Cadastre seus dados em Ajustes › Meu perfil para que apareçam aqui.</div>`;
+  ctx.restore();
+  return canvas;
+}
 
-  return `
-    <div class="card">
-      <div class="card-head">
-        <div>
-          <div class="brand">🐾 PataCare</div>
-          <div class="sub">Carteirinha de identificação</div>
-        </div>
-        <div class="num">Nº ${cardNumber(pet)}</div>
-      </div>
-
-      <div class="identity">
-        ${photo}
-        <div style="min-width:0">
-          <div class="name">${escapeHtml(pet.name)}</div>
-          ${tagline ? `<div class="tagline">${escapeHtml(tagline)}</div>` : ""}
-          <div class="chips">${chips}</div>
-        </div>
-      </div>
-
-      <div class="section">
-        <h3>Dados do pet</h3>
-        <div class="grid">${fields}</div>
-      </div>
-
-      <div class="tutor">${tutorBlock}</div>
-
-      <div class="card-foot">
-        Emitida em ${new Date().toLocaleDateString("pt-BR")} pelo app PataCare, a partir dos dados
-        informados pelo tutor. Documento de identificação e contato — não substitui a carteira de
-        vacinação nem o atestado do médico-veterinário.
-      </div>
-    </div>`;
+export function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob);
+      else reject(new Error("Não foi possível gerar a imagem"));
+    }, "image/png");
+  });
 }

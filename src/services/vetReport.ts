@@ -58,8 +58,9 @@ export function generateVetReport(selection: string) {
   td{ padding:6px 8px; border-bottom:1px solid #f0f0f0; vertical-align:top; overflow-wrap:break-word; word-break:break-word; }
   .empty{ font-size:12.5px; color:#999; font-style:italic; padding:4px 8px 14px; }
   .footer{ margin-top:36px; font-size:11px; color:#999; border-top:1px solid #eee; padding-top:12px; line-height:1.5; }
-  .print-bar{ position:sticky; top:0; background:#fff; padding:10px 0 16px; text-align:right; }
+  .print-bar{ position:sticky; top:0; background:#fff; padding:10px 0 16px; display:flex; gap:10px; justify-content:space-between; align-items:center; }
   .print-bar button{ background:#F2598A; color:#fff; border:none; padding:10px 18px; border-radius:20px; font-weight:700; font-size:13px; cursor:pointer; }
+  .print-bar button.back{ background:#fff; color:#C23A6B; border:1.5px solid #FFD3E0; }
   @media (max-width: 480px){
     body{ padding:18px 14px 48px; }
     h1{ font-size:19px; }
@@ -73,7 +74,18 @@ export function generateVetReport(selection: string) {
   }
 </style></head>
 <body>
-  <div class="print-bar"><button onclick="window.print()">Imprimir / Salvar PDF</button></div>
+  <div class="print-bar">
+    <button class="back" onclick="voltar()">← Voltar ao PataCare</button>
+    <button onclick="window.print()">Imprimir / Salvar PDF</button>
+  </div>
+  <script>
+    // a aba foi aberta por script, então fechar costuma funcionar; quando o
+    // navegador recusa (comum no celular), a própria aba volta para o app
+    function voltar(){
+      window.close();
+      setTimeout(function(){ location.href = ${JSON.stringify(location.href)}; }, 250);
+    }
+  </script>
   <h1>🐾 Relatório PataCare</h1>
   <div class="gen">Gerado em ${generatedAt}</div>
   ${petsHtml}

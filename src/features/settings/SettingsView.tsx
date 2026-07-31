@@ -26,11 +26,11 @@ import {
 } from "@/services/drive";
 import { exportBackup, importBackup } from "@/services/backup";
 import { generateVetReport } from "@/services/vetReport";
-import { generatePetCard } from "@/services/petCard";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { SectionTitle, Switch } from "@/components/ui/Field";
 import { TutorFormSheet } from "@/features/forms/TutorFormSheet";
+import { PetCardSheet } from "@/features/forms/PetCardSheet";
 import type { ThemeMode } from "@/types";
 
 export function SettingsView() {
@@ -40,10 +40,13 @@ export function SettingsView() {
   const { openSheet, toast, confirm } = useUiStore();
   const importRef = useRef<HTMLInputElement>(null);
   const [vetSelection, setVetSelection] = useState("all");
-  const [cardSelection, setCardSelection] = useState("all");
+  const [cardSelection, setCardSelection] = useState("");
   // força re-render após ações que mudam estado fora do React (drive, notificações)
   const [, setTick] = useState(0);
   const refresh = () => setTick((t) => t + 1);
+
+  // cai no primeiro pet enquanto nada foi escolhido (ou se o escolhido foi excluído)
+  const cardPet = petsSorted(pets).find((p) => p.id === cardSelection) ?? petsSorted(pets)[0];
 
   const supported = notificationsSupported();
   const permission = notificationPermission();
@@ -204,20 +207,28 @@ export function SettingsView() {
                 marginBottom: 14,
               }}
             >
-              Uma identidade do pet com foto, espécie, raça, nascimento, idade, microchip e seus
-              dados de contato — ideal para a primeira apresentação ao médico-veterinário.
+              Um cartão de identificação — foto, espécie, raça, nascimento, idade, microchip e seu
+              contato — para salvar como imagem ou enviar ao médico-veterinário.
             </p>
-            <div className="field" style={{ marginBottom: 12 }}>
-              <select value={cardSelection} onChange={(e) => setCardSelection(e.target.value)}>
-                <option value="all">Todos os pets</option>
-                {petsSorted(pets).map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <Button block onClick={() => generatePetCard(cardSelection)}>
+            {pets.length > 1 && (
+              <div className="field" style={{ marginBottom: 12 }}>
+                <select
+                  value={cardPet?.id ?? ""}
+                  onChange={(e) => setCardSelection(e.target.value)}
+                >
+                  {petsSorted(pets).map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <Button
+              block
+              disabled={!cardPet}
+              onClick={() => cardPet && openSheet(<PetCardSheet pet={cardPet} />)}
+            >
               <Icon name="chip" /> Gerar carteirinha
             </Button>
             {!tutor && (

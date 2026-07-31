@@ -26,6 +26,7 @@ import {
 } from "@/services/drive";
 import { exportBackup, importBackup } from "@/services/backup";
 import { generateVetReport } from "@/services/vetReport";
+import { generatePetCard } from "@/services/petCard";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { SectionTitle, Switch } from "@/components/ui/Field";
@@ -39,6 +40,7 @@ export function SettingsView() {
   const { openSheet, toast, confirm } = useUiStore();
   const importRef = useRef<HTMLInputElement>(null);
   const [vetSelection, setVetSelection] = useState("all");
+  const [cardSelection, setCardSelection] = useState("all");
   // força re-render após ações que mudam estado fora do React (drive, notificações)
   const [, setTick] = useState(0);
   const refresh = () => setTick((t) => t + 1);
@@ -192,6 +194,46 @@ export function SettingsView() {
 
       {pets.length > 0 && (
         <>
+          <SectionTitle>Carteirinha do pet</SectionTitle>
+          <div className="card" style={{ marginBottom: 18 }}>
+            <p
+              style={{
+                fontSize: 13.5,
+                color: "var(--text-muted)",
+                lineHeight: 1.5,
+                marginBottom: 14,
+              }}
+            >
+              Uma identidade do pet com foto, espécie, raça, nascimento, idade, microchip e seus
+              dados de contato — ideal para a primeira apresentação ao médico-veterinário.
+            </p>
+            <div className="field" style={{ marginBottom: 12 }}>
+              <select value={cardSelection} onChange={(e) => setCardSelection(e.target.value)}>
+                <option value="all">Todos os pets</option>
+                {petsSorted(pets).map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <Button block onClick={() => generatePetCard(cardSelection)}>
+              <Icon name="chip" /> Gerar carteirinha
+            </Button>
+            {!tutor && (
+              <p
+                style={{
+                  fontSize: 12.5,
+                  color: "var(--text-muted)",
+                  lineHeight: 1.45,
+                  margin: "12px 0 0",
+                }}
+              >
+                Cadastre seu perfil acima para incluir os dados do tutor na carteirinha.
+              </p>
+            )}
+          </div>
+
           <SectionTitle>Exportar para o veterinário</SectionTitle>
           <div className="card">
             <p

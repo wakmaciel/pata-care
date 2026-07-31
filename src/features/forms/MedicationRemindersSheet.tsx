@@ -181,6 +181,9 @@ export function MedicationRemindersSheet({ med, pet }: { med: MedicationRecord; 
   );
 }
 
+/** Arquivo servido junto com o app (public/atalhos) — base relativa por causa do GitHub Pages. */
+const ATALHO_FILE_URL = "atalhos/PataCare%20Lembretes.shortcut";
+
 /** Passo a passo do atalho — usado aqui e nos Ajustes. */
 export function RemindersHowTo({
   listName,
@@ -204,6 +207,21 @@ export function RemindersHowTo({
       <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>
         Atalho "{shortcutName || "PataCare Lembretes"}"
       </div>
+      <p
+        style={{ fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.6, margin: "0 0 10px" }}
+      >
+        Pelo iPhone, baixe o atalho pronto e abra o arquivo — ele já vem com as chaves certas. Se o
+        iOS recusar, ative Ajustes → Atalhos → "Permitir Atalhos Não Confiáveis" (aparece depois de
+        rodar qualquer atalho uma vez) ou monte à mão pelos passos abaixo.
+      </p>
+      <a
+        className="attach-add-btn"
+        style={{ marginBottom: 12, textDecoration: "none" }}
+        href={ATALHO_FILE_URL}
+        download="PataCare Lembretes.shortcut"
+      >
+        <Icon name="download" /> Baixar o atalho pronto
+      </a>
       <ol
         style={{
           margin: 0,

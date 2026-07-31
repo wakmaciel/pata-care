@@ -1,0 +1,3 @@
+# O arquivo do atalho do iPhone é consumido pelo app Atalhos como está —
+# nada de conversão de fim de linha entre Windows e Linux.
+*.shortcut -text

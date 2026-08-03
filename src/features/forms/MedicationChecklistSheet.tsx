@@ -11,7 +11,7 @@ import { useUiStore } from "@/store/ui";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { MedicationFormSheet } from "@/features/forms/MedicationFormSheet";
-import { MedicationRemindersSheet } from "@/features/forms/MedicationRemindersSheet";
+import { MedicationCalendarSheet } from "@/features/forms/MedicationCalendarSheet";
 import type { DoseStatus, MedicationRecord, Pet } from "@/types";
 
 export function MedicationChecklistSheet({ medId, pet }: { medId: string; pet: Pet }) {
@@ -142,9 +142,9 @@ export function MedicationChecklistSheet({ medId, pet }: { medId: string; pet: P
         variant="secondary"
         block
         style={{ marginBottom: 10 }}
-        onClick={() => openSheet(<MedicationRemindersSheet med={med} pet={pet} />)}
+        onClick={() => openSheet(<MedicationCalendarSheet med={med} pet={pet} />)}
       >
-        <Icon name="bell" /> Lembretes no iPhone
+        <Icon name="calendar" /> Doses no calendário
       </Button>
       <Button
         variant="secondary"

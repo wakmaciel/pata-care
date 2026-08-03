@@ -33,6 +33,81 @@ self.addEventListener("activate", (event) => {
   );
 });
 
+/* ── Push (avisos com o app fechado) ────────────────────────────────────────
+   O Worker manda o push SEM CORPO — ele só sabe "acorde este aparelho agora".
+   Quem descobre de qual dose se trata é aqui, lendo o IndexedDB local, para
+   que nenhum dado do pet precise sair do aparelho.
+
+   O iOS exige que TODO push vire uma notificação visível: se ficarmos calados
+   várias vezes, o Safari cancela a inscrição. Por isso todo caminho abaixo
+   termina em showNotification, inclusive o de erro. */
+
+const DOSE_MATCH_WINDOW_MS = 30 * 60000;
+
+function idbGetAll(storeName) {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open("patacare-db");
+    req.onerror = () => reject(req.error);
+    req.onsuccess = () => {
+      const db = req.result;
+      try {
+        const r = db.transaction(storeName, "readonly").objectStore(storeName).getAll();
+        r.onsuccess = () => resolve(r.result || []);
+        r.onerror = () => reject(r.error);
+      } catch (err) {
+        // banco ainda não criado (app nunca aberto neste aparelho)
+        reject(err);
+      }
+    };
+  });
+}
+
+function isPending(dose) {
+  const status = dose.status || (dose.done ? "done" : "pending");
+  return status === "pending";
+}
+
+async function describeDueDose() {
+  const [records, pets] = await Promise.all([idbGetAll("records"), idbGetAll("pets")]);
+  const petName = {};
+  pets.forEach((p) => { petName[p.id] = p.name; });
+
+  const now = Date.now();
+  let best = null;
+  records
+    .filter((r) => r.category === "medication" && Array.isArray(r.doses))
+    .forEach((med) => {
+      med.doses.filter(isPending).forEach((dose) => {
+        const delta = Math.abs(new Date(dose.scheduledAt).getTime() - now);
+        if (delta <= DOSE_MATCH_WINDOW_MS && (!best || delta < best.delta)) {
+          best = { delta, med, pet: petName[med.petId] || "seu pet" };
+        }
+      });
+    });
+
+  if (!best) return null;
+  return {
+    title: "Hora do remédio de " + best.pet,
+    body: best.med.name + " — " + best.med.doseAmount + " " + (best.med.doseUnit || "dose(s)"),
+  };
+}
+
+self.addEventListener("push", (event) => {
+  event.waitUntil(
+    describeDueDose()
+      .catch(() => null)
+      .then((info) =>
+        self.registration.showNotification(info ? info.title : "Lembrete do PataCare", {
+          body: info ? info.body : "Toque para conferir os cuidados do seu pet.",
+          icon: "icons/icon-192.png",
+          badge: "icons/icon-192.png",
+          tag: "patacare-push",
+          data: { url: "#/lembretes" }
+        })
+      )
+  );
+});
+
 // Ao tocar num aviso do sistema, traz o PataCare para frente já nos Lembretes.
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();

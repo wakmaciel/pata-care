@@ -48,7 +48,10 @@ npx wrangler secret put ALLOWED_ORIGIN
 ```
 
 - `VAPID_SUBJECT` → `mailto:seu@email.com`
-- `ALLOWED_ORIGIN` → a origem do app, ex. `https://wakmaciel.github.io` (sem barra no fim)
+- `ALLOWED_ORIGIN` → `https://wakmaciel.github.io`
+
+  É a **origem** do app, não a URL completa: sem o `/pata-care/` e sem barra no fim. O
+  navegador manda só o esquema + host no cabeçalho `Origin`, e é com ele que o Worker compara.
 
 **4. Publique:**
 

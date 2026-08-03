@@ -18,7 +18,47 @@ texto da notificação é o service worker do app (`public/sw.js`), lendo o Inde
 Efeito colateral prático: como não há corpo, não é preciso implementar a criptografia
 `aes128gcm` do Web Push. Basta assinar o cabeçalho VAPID, o que cabe em WebCrypto puro.
 
-## Publicar (uma vez)
+## Publicar pelo portal (sem instalar nada)
+
+Dá para fazer tudo pelo dash da Cloudflare. Neste caminho o `wrangler.toml` **não é usado** —
+o cron e o KV são configurados na interface —, então não é preciso o id do namespace.
+
+**1. Gere as chaves VAPID.** Abra o console do navegador (F12 → Console) em qualquer página e
+cole:
+
+```js
+const kp = await crypto.subtle.generateKey({name:"ECDSA",namedCurve:"P-256"}, true, ["sign","verify"]);
+const raw = new Uint8Array(await crypto.subtle.exportKey("raw", kp.publicKey));
+const jwk = await crypto.subtle.exportKey("jwk", kp.privateKey);
+const b64 = b => btoa(String.fromCharCode(...b)).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+console.log("PUBLIC :", b64(raw));
+console.log("PRIVATE:", jwk.d);
+```
+
+Guarde as duas. A **privada** só vai para a Cloudflare; a **pública** vai para os dois lados.
+
+**2. Crie o namespace KV.** *Armazenamento e bancos de dados → Workers KV → Criar*. O nome é
+livre (ex.: `pata-care`). Não adicione pares na aba "Pares de KV" — quem escreve lá é o Worker.
+
+**3. Crie o Worker.** *Computação → Workers e Pages → Criar → Worker*, nome `patacare-push`, e
+implante o "Hello World" que vem pronto. Depois entre em **Editar código**, apague tudo, cole o
+conteúdo de [`src/index.js`](src/index.js) e implante de novo.
+
+**4. Ligue o KV ao Worker.** No Worker, *Configurações → Vinculações (Bindings) → Adicionar →
+Workers KV*. O **nome da variável precisa ser exatamente `PUSH`** (é o `env.PUSH` do código) e o
+namespace é o do passo 2. O nome do namespace não importa; o do binding, sim.
+
+**5. Adicione os segredos.** *Configurações → Variáveis e segredos → Adicionar*, tipo **Secret**,
+um para cada: `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` (`mailto:seu@email.com`) e
+`ALLOWED_ORIGIN` (veja a observação sobre origem mais abaixo).
+
+**6. Ligue o cron.** *Configurações → Gatilhos (Triggers) → Cron Triggers → Adicionar*, com a
+expressão `* * * * *` (de minuto em minuto, o menor intervalo que a Cloudflare aceita).
+
+**7. Pegue a URL.** Está na página do Worker: `https://patacare-push.SEU-SUBDOMINIO.workers.dev`.
+É ela que vai em `PUSH_WORKER_URL`. Siga para o passo 5 da seção seguinte.
+
+## Publicar pela linha de comando (uma vez)
 
 ```bash
 cd worker

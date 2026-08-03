@@ -15,9 +15,12 @@ import { useDataStore } from "@/store/data";
 import { toast } from "@/store/ui";
 import type { MedicationRecord } from "@/types";
 
-/* Preencha os dois depois de publicar o Worker (veja worker/README.md). */
-const PUSH_WORKER_URL = "";
-const VAPID_PUBLIC_KEY = "";
+/* Worker publicado na Cloudflare — veja worker/README.md.
+   A URL vai sem barra no fim; a chave é a pública do par VAPID (a privada
+   fica só nos segredos do Worker). */
+const PUSH_WORKER_URL = "https://patacare-push.macielwak.workers.dev";
+const VAPID_PUBLIC_KEY =
+  "BIYcNiVGjGYxnqRNWpFCICu8XL_KAMEs8hm-CLgMYViqVM77B9awM9RCeQXChdMSNS3gWRS7RzKR3xYgq3Wwyz4";
 
 const PUSH_ENABLED_KEY = "patacare-push-enabled";
 /** Teto igual ao do Worker — mais que isso ele descarta mesmo. */

@@ -2,7 +2,9 @@
    Gera um arquivo .ics compatível com iOS (abre direto no app Calendário). */
 import { pad } from "@/lib/dates";
 import { uid } from "@/lib/utils";
+import { doseStatus, MED_FORM_UNITS } from "@/domain/medications";
 import { toast } from "@/store/ui";
+import type { MedicationRecord, Pet } from "@/types";
 
 // Nome exato do calendário no iPhone (sem emoji se não tiver)
 export const PETS_CALENDAR_NAME = "Pets";
@@ -96,46 +98,123 @@ function icsLocalStamp(d: Date): string {
   );
 }
 
+/* ── Doses de medicamento no calendário ─────────────────────────────────────
+   Cada dose vira um evento com alarme. O alarme é agendado pelo próprio iPhone,
+   então ele toca mesmo com o PataCare fechado — sem depender de servidor. */
+
+const DOSE_ALERT_SETTINGS_KEY = "patacare-reminders-settings";
+
+export const DOSE_ALERT_OPTIONS = [
+  { label: "Na hora da dose", minutes: 0 },
+  { label: "5 minutos antes", minutes: 5 },
+  { label: "15 minutos antes", minutes: 15 },
+  { label: "30 minutos antes", minutes: 30 },
+  { label: "1 hora antes", minutes: 60 },
+] as const;
+
+export interface DoseAlertSettings {
+  /** antecedência do alarme de cada dose, em minutos */
+  leadMinutes: number;
+}
+
+export const DEFAULT_DOSE_ALERT_SETTINGS: DoseAlertSettings = { leadMinutes: 0 };
+
+export function getDoseAlertSettings(): DoseAlertSettings {
+  try {
+    const saved = JSON.parse(
+      localStorage.getItem(DOSE_ALERT_SETTINGS_KEY) || "null"
+    ) as Partial<DoseAlertSettings> | null;
+    return { ...DEFAULT_DOSE_ALERT_SETTINGS, ...(saved || {}) };
+  } catch {
+    return { ...DEFAULT_DOSE_ALERT_SETTINGS };
+  }
+}
+
+export function saveDoseAlertSettings(settings: DoseAlertSettings) {
+  localStorage.setItem(DOSE_ALERT_SETTINGS_KEY, JSON.stringify(settings));
+}
+
+export interface DoseReminder {
+  title: string;
+  notes: string;
+  scheduledAt: Date;
+  /** mesma data em texto legível, usada na prévia e na cópia manual */
+  whenText: string;
+}
+
+function doseWhenText(d: Date): string {
+  return (
+    pad(d.getDate()) +
+    "/" +
+    pad(d.getMonth() + 1) +
+    "/" +
+    d.getFullYear() +
+    " às " +
+    pad(d.getHours()) +
+    ":" +
+    pad(d.getMinutes())
+  );
+}
+
+/** Um item por dose — vira evento no .ics e linha na lista copiada. */
+export function buildDoseReminders(
+  pet: Pet,
+  med: MedicationRecord,
+  opts: { onlyPending: boolean }
+): DoseReminder[] {
+  const unit = med.doseUnit || MED_FORM_UNITS[med.form] || "dose(s)";
+  const total = med.doses.length;
+  const now = Date.now();
+  const items: DoseReminder[] = [];
+
+  med.doses.forEach((dose, i) => {
+    if (opts.onlyPending && doseStatus(dose) !== "pending") return;
+    const scheduled = new Date(dose.scheduledAt);
+    if (opts.onlyPending && scheduled.getTime() < now) return;
+    const notes = [
+      `Dose ${i + 1} de ${total} · ${med.doseAmount} ${unit}`,
+      `A cada ${med.frequencyHours}h · início ${doseWhenText(new Date(med.startDateTime))}`,
+      med.notes || "",
+      "Criado pelo PataCare 🐾",
+    ]
+      .filter(Boolean)
+      .join("\n");
+    items.push({
+      title: `💊 ${med.name} — ${pet.name}`,
+      notes,
+      scheduledAt: scheduled,
+      whenText: doseWhenText(scheduled),
+    });
+  });
+
+  return items;
+}
+
 /** Um evento (com alarme) para cada dose de um medicamento. */
 export function agendarDosesNoCalendario(
-  petName: string,
-  medName: string,
-  scheduledAtList: string[],
-  description: string,
+  items: DoseReminder[],
+  fileLabel: string,
   alertMinutes = 0
 ) {
-  if (scheduledAtList.length === 0) {
+  if (items.length === 0) {
     toast("Nenhuma dose para agendar");
     return;
   }
-  const summary = icsEscape("💊 " + medName + " — " + petName);
-  const desc = icsEscape(description);
 
-  const events = scheduledAtList.flatMap((iso) => {
-    const start = new Date(iso);
-    const end = new Date(start.getTime() + 15 * 60000);
+  const events = items.flatMap((item) => {
+    const end = new Date(item.scheduledAt.getTime() + 15 * 60000);
     return [
       "BEGIN:VEVENT",
       "UID:" + uid() + "@patacare",
-      "DTSTART:" + icsLocalStamp(start),
+      "DTSTART:" + icsLocalStamp(item.scheduledAt),
       "DTEND:" + icsLocalStamp(end),
-      "SUMMARY:" + summary,
-      "DESCRIPTION:" + desc,
-      ...(alertMinutes > 0
-        ? [
-            "BEGIN:VALARM",
-            "TRIGGER:-PT" + alertMinutes + "M",
-            "ACTION:DISPLAY",
-            "DESCRIPTION:Hora do remédio",
-            "END:VALARM",
-          ]
-        : [
-            "BEGIN:VALARM",
-            "TRIGGER:PT0M",
-            "ACTION:DISPLAY",
-            "DESCRIPTION:Hora do remédio",
-            "END:VALARM",
-          ]),
+      "SUMMARY:" + icsEscape(item.title),
+      "DESCRIPTION:" + icsEscape(item.notes),
+      "BEGIN:VALARM",
+      "TRIGGER:" + (alertMinutes > 0 ? "-PT" + alertMinutes + "M" : "PT0M"),
+      "ACTION:DISPLAY",
+      "DESCRIPTION:Hora do remédio",
+      "END:VALARM",
       "END:VEVENT",
     ];
   });
@@ -148,8 +227,34 @@ export function agendarDosesNoCalendario(
     "END:VCALENDAR",
   ].join("\r\n");
 
-  downloadIcs(icsContent, medName + "-" + petName + "-doses");
-  toast(
-    scheduledAtList.length + " dose(s) no arquivo .ics — abra para adicionar ao seu calendário!"
-  );
+  downloadIcs(icsContent, fileLabel + "-doses");
+  toast(items.length + " dose(s) no arquivo .ics — abra para adicionar ao seu calendário!");
+}
+
+/** Texto simples para colar onde o tutor quiser (WhatsApp, Notas, Lembretes...). */
+export function dosesAsText(items: DoseReminder[]): string {
+  return items.map((i) => `• ${i.title} — ${i.whenText}`).join("\n");
+}
+
+export async function copyDosesText(items: DoseReminder[]): Promise<boolean> {
+  const text = dosesAsText(items);
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    // Safari antigo/contexto sem permissão: cai no textarea temporário
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand("copy");
+      ta.remove();
+      return ok;
+    } catch {
+      return false;
+    }
+  }
 }

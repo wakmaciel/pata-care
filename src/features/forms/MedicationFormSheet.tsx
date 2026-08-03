@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { Field, FieldRow, SwitchRow } from "@/components/ui/Field";
 import { SheetHeader } from "@/components/ui/OverlayHost";
-import { MedicationRemindersSheet } from "@/features/forms/MedicationRemindersSheet";
+import { MedicationCalendarSheet } from "@/features/forms/MedicationCalendarSheet";
 import type { MedicationForm, MedicationRecord } from "@/types";
 
 export function MedicationFormSheet({
@@ -36,7 +36,7 @@ export function MedicationFormSheet({
   const [totalDirty, setTotalDirty] = useState(isEdit);
   const [totalManual, setTotalManual] = useState(existing ? String(existing.totalDoses) : "");
   const [notes, setNotes] = useState(existing?.notes ?? "");
-  const [wantsReminders, setWantsReminders] = useState(!isEdit);
+  const [wantsCalendar, setWantsCalendar] = useState(!isEdit);
 
   const nameSuggestions = useMemo(() => distinctValues(records, "medication", "name"), [records]);
 
@@ -103,8 +103,8 @@ export function MedicationFormSheet({
     };
     await putRecord(rec);
     toast(isEdit ? "Medicamento atualizado!" : "Medicamento adicionado!");
-    // com os lembretes ligados, a folha vira a tela de envio em vez de fechar
-    if (wantsReminders && pet) openSheet(<MedicationRemindersSheet med={rec} pet={pet} />);
+    // com o agendamento ligado, a folha vira a tela do calendário em vez de fechar
+    if (wantsCalendar && pet) openSheet(<MedicationCalendarSheet med={rec} pet={pet} />);
     else closeSheet();
   };
 
@@ -203,10 +203,10 @@ export function MedicationFormSheet({
         />
       </Field>
       <SwitchRow
-        label="Lembretes no iPhone"
-        sub="Ao salvar, envia cada dose para o app Lembretes (lista Pet)"
-        checked={wantsReminders}
-        onChange={setWantsReminders}
+        label="Agendar doses no calendário"
+        sub="Ao salvar, gera um evento com alarme para cada dose"
+        checked={wantsCalendar}
+        onChange={setWantsCalendar}
       />
       <Button block onClick={onSave}>
         <Icon name="check" /> Salvar

@@ -13,7 +13,9 @@ Um app web (PWA) para gerenciar a saúde e os cuidados dos seus pets: vacinas (c
 - **Medidas para roupas**: pescoço, peito/tórax e comprimento do dorso.
 - **Peso**: histórico com gráfico e comparação com a faixa esperada da raça.
 - **Cio** (apenas fêmeas): início, fim e intervalo médio entre ciclos.
-- **Lembretes e notificações do sistema**.
+- **Lembretes e notificações do sistema**, com resumo das doses atrasadas que ficaram sem marcação.
+- **Doses no calendário**: cada dose vira um evento com alarme num arquivo `.ics` — quem dispara é o próprio iPhone, então toca com o app fechado.
+- **Avisos com o app fechado (Web Push)**, opcionais, via um Worker na Cloudflare (veja `worker/`).
 - **Relatório para o veterinário** (PDF via impressão do navegador).
 - **Modo claro / escuro / automático**.
 - **Backup local (.json)** e **backup automático no Google Drive**.
@@ -48,8 +50,12 @@ pata-care/
 │   ├── services/         → Google Drive, notificações, backup, calendário, relatório
 │   ├── components/ui/    → componentes base (botões, campos, sheets, toasts...)
 │   └── features/         → telas e formulários por funcionalidade
+├── worker/               → Worker da Cloudflare que envia o Web Push (opcional)
+├── docs/                 → notas técnicas (ex.: notificações em segundo plano)
 └── .github/workflows/deploy.yml → build + deploy no GitHub Pages
 ```
+
+> O `worker/` é um projeto à parte, publicado com `wrangler` — o build do app não o inclui.
 
 ## 🚀 Desenvolvimento
 

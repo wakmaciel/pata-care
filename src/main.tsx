@@ -6,6 +6,7 @@ import { useDataStore } from "@/store/data";
 import { initTheme } from "@/store/theme";
 import { scheduleDriveBackupAfterChange, driveAutoBackupOnOpen } from "@/services/drive";
 import { scheduleNotificationCheck } from "@/services/notifications";
+import { schedulePushSync, syncPushSchedule } from "@/services/push";
 import { registerServiceWorker } from "@/pwa";
 import "@/index.css";
 
@@ -26,8 +27,12 @@ function hideSplash() {
   }, wait);
 }
 
-// Toda escrita no banco agenda um backup automático no Google Drive (se conectado).
-setDbChangeListener(scheduleDriveBackupAfterChange);
+// Toda escrita no banco agenda um backup automático no Google Drive (se conectado)
+// e reenvia ao Worker os horários das próximas doses (se o push estiver ligado).
+setDbChangeListener(() => {
+  scheduleDriveBackupAfterChange();
+  schedulePushSync();
+});
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
@@ -45,5 +50,8 @@ useDataStore
       if (document.visibilityState === "visible") scheduleNotificationCheck();
     });
     driveAutoBackupOnOpen();
+    // Reafirma a agenda a cada abertura: cobre doses marcadas em outro aparelho
+    // e inscrições que o iOS renovou por conta própria.
+    void syncPushSchedule();
   })
   .finally(hideSplash);

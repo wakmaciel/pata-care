@@ -26,52 +26,109 @@ import {
 } from "@/services/drive";
 import { exportBackup, importBackup } from "@/services/backup";
 import { generateVetReport } from "@/services/vetReport";
-import { getRemindersSettings, saveRemindersSettings } from "@/services/reminders";
+import {
+  DOSE_ALERT_OPTIONS,
+  getDoseAlertSettings,
+  saveDoseAlertSettings,
+} from "@/services/calendar";
+import {
+  disablePush,
+  enablePush,
+  isInstalledApp,
+  isPushConfigured,
+  isPushEnabled,
+  pushSupported,
+} from "@/services/push";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { Field, SectionTitle, Switch } from "@/components/ui/Field";
-import { RemindersHowTo } from "@/features/forms/MedicationRemindersSheet";
 import { TutorFormSheet } from "@/features/forms/TutorFormSheet";
 import { PetCardSheet } from "@/features/forms/PetCardSheet";
 import type { ThemeMode } from "@/types";
 
-/** Lista e atalho usados ao mandar as doses de medicamento para os Lembretes. */
-function RemindersCard() {
-  const saved = getRemindersSettings();
-  const [listName, setListName] = useState(saved.listName);
-  const [shortcutName, setShortcutName] = useState(saved.shortcutName);
-  const [showHowTo, setShowHowTo] = useState(false);
-  const persist = () =>
-    saveRemindersSettings({ ...getRemindersSettings(), listName, shortcutName });
+/** Web Push: o único jeito de avisar com o app fechado sem passar pelo Calendário. */
+function ClosedAppPushCard() {
+  const { toast } = useUiStore();
+  const [enabled, setEnabled] = useState(isPushEnabled());
+  const [busy, setBusy] = useState(false);
+  const installed = isInstalledApp();
+  const supported = pushSupported();
+
+  const status = !supported
+    ? "Indisponível neste navegador"
+    : !installed
+      ? "Requer o app na Tela de Início"
+      : enabled
+        ? "Ativados neste dispositivo"
+        : "Desativados";
+
+  return (
+    <div className="card" style={{ marginBottom: 18 }}>
+      <div className="settings-row" style={{ paddingTop: 0, borderBottom: "none" }}>
+        <div className="lbl">
+          <div className="t">Avisos com o app fechado</div>
+          <div className="s">{status}</div>
+        </div>
+        <Switch
+          checked={enabled}
+          disabled={busy || !supported || !installed}
+          onChange={async (checked) => {
+            setBusy(true);
+            if (checked) {
+              setEnabled(await enablePush());
+            } else {
+              await disablePush();
+              setEnabled(false);
+              toast("Avisos com o app fechado desativados");
+            }
+            setBusy(false);
+          }}
+        />
+      </div>
+      <p
+        style={{ fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.5, margin: "10px 0 0" }}
+      >
+        Na hora de cada dose o aparelho recebe um toque e mostra a notificação, mesmo com o PataCare
+        fechado. Os dados do seu pet <strong>não saem do aparelho</strong>: o servidor guarda só os
+        horários, e o texto do aviso é montado aqui.
+      </p>
+      {!installed && (
+        <p style={{ fontSize: 12.5, color: "var(--peach)", lineHeight: 1.45, margin: "10px 0 0" }}>
+          O iPhone só permite esses avisos no app instalado. Toque em compartilhar → "Adicionar à
+          Tela de Início" e abra o PataCare por lá.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** Antecedência padrão do alarme gerado para cada dose de medicamento. */
+function DoseCalendarCard() {
+  const [leadMinutes, setLeadMinutes] = useState(getDoseAlertSettings().leadMinutes);
 
   return (
     <div className="card" style={{ marginBottom: 18 }}>
       <p style={{ fontSize: 13.5, color: "var(--text-muted)", lineHeight: 1.5, marginBottom: 14 }}>
-        Ao cadastrar um medicamento, o PataCare manda cada dose para o app Lembretes do iPhone
-        através do app Atalhos — assim os horários aparecem junto com a sua lista de pet.
+        Ao cadastrar um medicamento, o PataCare gera um arquivo <strong>.ics</strong> com um evento
+        por dose. Ao abrir o arquivo, o iPhone adiciona tudo ao Calendário — e o alarme de cada dose
+        toca mesmo com o app fechado.
       </p>
-      <Field label="Lista dos Lembretes">
-        <input
-          type="text"
-          placeholder="Ex: Pet"
-          value={listName}
-          onChange={(e) => setListName(e.target.value)}
-          onBlur={persist}
-        />
+      <Field label="Alerta padrão de cada dose">
+        <select
+          value={leadMinutes}
+          onChange={(e) => {
+            const minutes = parseInt(e.target.value, 10);
+            setLeadMinutes(minutes);
+            saveDoseAlertSettings({ leadMinutes: minutes });
+          }}
+        >
+          {DOSE_ALERT_OPTIONS.map((o) => (
+            <option key={o.minutes} value={o.minutes}>
+              {o.label}
+            </option>
+          ))}
+        </select>
       </Field>
-      <Field label="Nome do atalho (app Atalhos)">
-        <input
-          type="text"
-          placeholder="Ex: PataCare Lembretes"
-          value={shortcutName}
-          onChange={(e) => setShortcutName(e.target.value)}
-          onBlur={persist}
-        />
-      </Field>
-      <Button variant="secondary" block onClick={() => setShowHowTo((v) => !v)}>
-        <Icon name="info" /> {showHowTo ? "Ocultar" : "Ver"} passo a passo do atalho
-      </Button>
-      {showHowTo && <RemindersHowTo listName={listName} shortcutName={shortcutName} />}
     </div>
   );
 }
@@ -215,8 +272,8 @@ export function SettingsView() {
           }}
         >
           Você recebe avisos de cuidados próximos, atrasados e horários de medicamento ao abrir ou
-          deixar o PataCare ativo. Para avisos com o app totalmente fechado, é necessário configurar
-          um serviço de push.
+          deixar o PataCare ativo. Com o app fechado o iPhone congela o app, então use o agendamento
+          no calendário abaixo — o alarme fica com o próprio iPhone e toca de qualquer jeito.
         </p>
         {supported && permission === "denied" && (
           <p style={{ fontSize: 12.5, color: "var(--red)", lineHeight: 1.45, marginBottom: 12 }}>
@@ -238,8 +295,10 @@ export function SettingsView() {
         </Button>
       </div>
 
-      <SectionTitle>Lembretes do iPhone</SectionTitle>
-      <RemindersCard />
+      {isPushConfigured() && <ClosedAppPushCard />}
+
+      <SectionTitle>Doses no calendário</SectionTitle>
+      <DoseCalendarCard />
 
       {pets.length > 0 && (
         <>

@@ -109,7 +109,10 @@ interface CareCandidate {
 interface DoseCandidate {
   pet: Pet;
   med: MedicationRecord;
+  /** primeira dose ainda pendente — a que merece o aviso pontual */
   dose: Dose;
+  /** quantas doses desse medicamento já passaram da hora e seguem pendentes */
+  lateCount: number;
 }
 
 function notificationCandidates(): { care: CareCandidate[]; doses: DoseCandidate[] } {
@@ -125,13 +128,18 @@ function notificationCandidates(): { care: CareCandidate[]; doses: DoseCandidate
       }
     });
   });
+  const now = Date.now();
   const doses: DoseCandidate[] = [];
   pets.forEach((pet) => {
     records
       .filter((r): r is MedicationRecord => r.petId === pet.id && r.category === "medication")
       .forEach((med) => {
         const dose = med.doses && med.doses.find(isDosePending);
-        if (dose) doses.push({ pet, med, dose });
+        if (!dose) return;
+        const lateCount = med.doses.filter(
+          (d) => isDosePending(d) && new Date(d.scheduledAt).getTime() < now
+        ).length;
+        doses.push({ pet, med, dose, lateCount });
       });
   });
   return { care, doses };
@@ -156,13 +164,21 @@ function runNotificationCheck() {
     });
     markNotificationSent(dailyKey);
   }
-  doses.forEach(({ pet, med, dose }) => {
+  const stale: DoseCandidate[] = [];
+  doses.forEach((candidate) => {
+    const { pet, med, dose } = candidate;
     const dueAt = new Date(dose.scheduledAt).getTime();
     const minutesFromNow = (dueAt - now.getTime()) / 60000;
     // Notifica desde 15 min antes até 24 h depois da dose. O identificador
     // garante um único aviso por dose, mesmo se o app for reaberto.
     const key = "dose:" + med.id + ":" + dose.scheduledAt;
-    if (minutesFromNow <= 15 && minutesFromNow >= -1440 && !wasNotificationSent(key)) {
+    if (minutesFromNow < -1440) {
+      // Passou da janela do aviso pontual: se o app ficou dias sem ser aberto,
+      // essas doses nunca gerariam aviso nenhum. Entram no resumo diário.
+      stale.push(candidate);
+      return;
+    }
+    if (minutesFromNow <= 15 && !wasNotificationSent(key)) {
       const when =
         minutesFromNow < -1
           ? "está atrasada"
@@ -176,6 +192,23 @@ function runNotificationCheck() {
       markNotificationSent(key);
     }
   });
+
+  // Resumo único por dia enquanto houver doses antigas sem resolver — some
+  // sozinho quando o tutor marcar as doses como aplicadas ou não aplicadas.
+  const staleKey = "stale:" + today;
+  if (stale.length && !wasNotificationSent(staleKey)) {
+    const totalLate = stale.reduce((acc, item) => acc + item.lateCount, 0);
+    const names = [...new Set(stale.map((item) => `${item.med.name} (${item.pet.name})`))];
+    showSystemNotification("Doses atrasadas", {
+      body:
+        `${totalLate} dose${totalLate === 1 ? "" : "s"} sem marcação: ` +
+        names.slice(0, 3).join(", ") +
+        (names.length > 3 ? ` e mais ${names.length - 3}` : "") +
+        ".",
+      tag: staleKey,
+    });
+    markNotificationSent(staleKey);
+  }
 }
 
 export function scheduleNotificationCheck() {

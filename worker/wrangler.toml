@@ -1,0 +1,13 @@
+name = "patacare-push"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+
+# Cron de 1 em 1 minuto — é a menor granularidade dos Cron Triggers.
+[triggers]
+crons = ["* * * * *"]
+
+# Preencha o id depois de rodar:
+#   npx wrangler kv namespace create PUSH
+[[kv_namespaces]]
+binding = "PUSH"
+id = "COLE_AQUI_O_ID_DO_NAMESPACE"

@@ -1,12 +1,14 @@
 /* ── PataCare Push — Cloudflare Worker ──────────────────────────────────────
-   Acorda o iPhone na hora da dose, com o app fechado.
+   Acorda o iPhone na hora do lembrete, com o app fechado: dose de remédio,
+   vacina, vermífugo, antipulgas, consulta.
 
    Princípio de projeto: o Worker NÃO sabe nada sobre os pets. Ele guarda só a
    inscrição de push do aparelho e uma lista de instantes ("me cutuque às
-   18:50"). O push é enviado SEM PAYLOAD — quem monta o texto da notificação é
-   o service worker no aparelho, lendo o IndexedDB local. Como não há corpo,
-   também não é preciso implementar a criptografia aes128gcm: basta assinar o
-   cabeçalho VAPID.
+   18:50") — nem sabe se aquele instante é uma dose ou uma vacina vencida. O
+   push é enviado SEM PAYLOAD, e quem monta o texto da notificação é o service
+   worker no aparelho, lendo o IndexedDB local. Como não há corpo, também não é
+   preciso implementar a criptografia aes128gcm: basta assinar o cabeçalho
+   VAPID.
 
    Segredos (via `wrangler secret put`):
      VAPID_PUBLIC_KEY   chave pública, base64url (a mesma que vai no app)

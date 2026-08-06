@@ -6,15 +6,7 @@ import { useTutorStore } from "@/store/tutor";
 import { useThemeStore } from "@/store/theme";
 import { useUiStore } from "@/store/ui";
 import { navigate } from "@/router";
-import {
-  enableSystemNotifications,
-  getNotificationSettings,
-  notificationPermission,
-  notificationsSupported,
-  saveNotificationSettings,
-  showSystemNotification,
-  stopNotificationCheck,
-} from "@/services/notifications";
+import { notificationPermission, showSystemNotification } from "@/services/notifications";
 import {
   driveConnect,
   driveDisconnect,
@@ -46,32 +38,47 @@ import { TutorFormSheet } from "@/features/forms/TutorFormSheet";
 import { PetCardSheet } from "@/features/forms/PetCardSheet";
 import type { ThemeMode } from "@/types";
 
-/** Web Push: o único jeito de avisar com o app fechado sem passar pelo Calendário. */
-function ClosedAppPushCard() {
+/* ── Notificações ────────────────────────────────────────────────────────────
+   Um interruptor só, porque só existe um canal: o Web Push. Remédios, vacinas,
+   vermífugos, antipulgas e consultas saem todos por ele, na hora marcada e com
+   o app fechado.
+
+   O canal que avisava ao abrir o app foi removido na v2.1 — ele repetia o que o
+   push já tinha anunciado e, por natureza, só conseguia falar de coisas que já
+   tinham passado. */
+function NotificationsCard() {
   const { toast } = useUiStore();
   const [enabled, setEnabled] = useState(isPushEnabled());
   const [busy, setBusy] = useState(false);
-  const installed = isInstalledApp();
-  const supported = pushSupported();
 
-  const status = !supported
-    ? "Indisponível neste navegador"
-    : !installed
-      ? "Requer o app na Tela de Início"
-      : enabled
-        ? "Ativados neste dispositivo"
-        : "Desativados";
+  const permission = notificationPermission();
+  const configured = isPushConfigured();
+  const supported = pushSupported();
+  const installed = isInstalledApp();
+  const available = configured && supported && installed && permission !== "denied";
+
+  const status = !configured
+    ? "Servidor de avisos não configurado"
+    : !supported
+      ? "Indisponível neste navegador"
+      : !installed
+        ? "Requer o app na Tela de Início"
+        : permission === "denied"
+          ? "Bloqueadas no navegador"
+          : enabled
+            ? "Ativadas neste dispositivo"
+            : "Desativadas";
 
   return (
     <div className="card" style={{ marginBottom: 18 }}>
       <div className="settings-row" style={{ paddingTop: 0, borderBottom: "none" }}>
         <div className="lbl">
-          <div className="t">Avisos com o app fechado</div>
+          <div className="t">Lembretes do PataCare</div>
           <div className="s">{status}</div>
         </div>
         <Switch
           checked={enabled}
-          disabled={busy || !supported || !installed}
+          disabled={busy || !available}
           onChange={async (checked) => {
             setBusy(true);
             if (checked) {
@@ -79,25 +86,50 @@ function ClosedAppPushCard() {
             } else {
               await disablePush();
               setEnabled(false);
-              toast("Avisos com o app fechado desativados");
+              toast("Lembretes desativados neste dispositivo");
             }
             setBusy(false);
           }}
         />
       </div>
       <p
-        style={{ fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.5, margin: "10px 0 0" }}
+        style={{
+          fontSize: 12.5,
+          color: "var(--text-muted)",
+          lineHeight: 1.5,
+          margin: "10px 0 14px",
+        }}
       >
-        Na hora de cada dose o aparelho recebe um toque e mostra a notificação, mesmo com o PataCare
-        fechado. Os dados do seu pet <strong>não saem do aparelho</strong>: o servidor guarda só os
-        horários, e o texto do aviso é montado aqui.
+        O aparelho é avisado na hora de cada dose de remédio e às 9h do dia de cada vacina,
+        vermífugo, antipulgas ou consulta — repetindo todo dia às 9h enquanto o cuidado seguir
+        pendente. Tudo chega com o PataCare fechado. Os dados do seu pet{" "}
+        <strong>não saem do aparelho</strong>: o servidor guarda só os horários, e o texto do aviso
+        é montado aqui.
       </p>
       {!installed && (
-        <p style={{ fontSize: 12.5, color: "var(--peach)", lineHeight: 1.45, margin: "10px 0 0" }}>
+        <p style={{ fontSize: 12.5, color: "var(--peach)", lineHeight: 1.45, marginBottom: 12 }}>
           O iPhone só permite esses avisos no app instalado. Toque em compartilhar → "Adicionar à
           Tela de Início" e abra o PataCare por lá.
         </p>
       )}
+      {permission === "denied" && (
+        <p style={{ fontSize: 12.5, color: "var(--red)", lineHeight: 1.45, marginBottom: 12 }}>
+          Libere as notificações nas configurações do aparelho e volte ao app.
+        </p>
+      )}
+      <Button
+        variant="secondary"
+        block
+        disabled={permission !== "granted"}
+        onClick={() =>
+          showSystemNotification("PataCare está pronto!", {
+            body: "Você receberá lembretes dos cuidados do seu pet neste dispositivo.",
+            tag: "patacare-test",
+          })
+        }
+      >
+        <Icon name="bell" /> Enviar notificação de teste
+      </Button>
     </div>
   );
 }
@@ -147,17 +179,6 @@ export function SettingsView() {
 
   // cai no primeiro pet enquanto nada foi escolhido (ou se o escolhido foi excluído)
   const cardPet = petsSorted(pets).find((p) => p.id === cardSelection) ?? petsSorted(pets)[0];
-
-  const supported = notificationsSupported();
-  const permission = notificationPermission();
-  const notificationEnabled = getNotificationSettings().enabled && permission === "granted";
-  const notificationStatus = !supported
-    ? "Indisponível neste navegador"
-    : permission === "denied"
-      ? "Bloqueadas no navegador"
-      : notificationEnabled
-        ? "Ativadas neste dispositivo"
-        : "Desativadas";
 
   const driveConnected = isDriveConnected();
   const driveLast = getDriveLastBackup();
@@ -242,60 +263,7 @@ export function SettingsView() {
       </div>
 
       <SectionTitle>Notificações</SectionTitle>
-      <div className="card" style={{ marginBottom: 18 }}>
-        <div className="settings-row" style={{ paddingTop: 0, borderBottom: "none" }}>
-          <div className="lbl">
-            <div className="t">Lembretes no sistema</div>
-            <div className="s">{notificationStatus}</div>
-          </div>
-          <Switch
-            checked={notificationEnabled}
-            disabled={!supported || permission === "denied"}
-            onChange={async (checked) => {
-              if (checked) {
-                await enableSystemNotifications();
-              } else {
-                saveNotificationSettings({ enabled: false });
-                stopNotificationCheck();
-                toast("Notificações desativadas neste dispositivo");
-              }
-              refresh();
-            }}
-          />
-        </div>
-        <p
-          style={{
-            fontSize: 12.5,
-            color: "var(--text-muted)",
-            lineHeight: 1.5,
-            margin: "10px 0 14px",
-          }}
-        >
-          Você recebe avisos de cuidados próximos, atrasados e horários de medicamento ao abrir ou
-          deixar o PataCare ativo. Com o app fechado o iPhone congela o app, então use o agendamento
-          no calendário abaixo — o alarme fica com o próprio iPhone e toca de qualquer jeito.
-        </p>
-        {supported && permission === "denied" && (
-          <p style={{ fontSize: 12.5, color: "var(--red)", lineHeight: 1.45, marginBottom: 12 }}>
-            Libere as notificações nas configurações do navegador e volte ao app.
-          </p>
-        )}
-        <Button
-          variant="secondary"
-          block
-          disabled={!notificationEnabled}
-          onClick={() =>
-            showSystemNotification("PataCare está pronto!", {
-              body: "Você receberá lembretes dos cuidados do seu pet neste dispositivo.",
-              tag: "patacare-test",
-            })
-          }
-        >
-          <Icon name="bell" /> Enviar notificação de teste
-        </Button>
-      </div>
-
-      {isPushConfigured() && <ClosedAppPushCard />}
+      <NotificationsCard />
 
       <SectionTitle>Doses no calendário</SectionTitle>
       <DoseCalendarCard />

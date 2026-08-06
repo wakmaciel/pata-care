@@ -13,9 +13,8 @@ Um app web (PWA) para gerenciar a saúde e os cuidados dos seus pets: vacinas (c
 - **Medidas para roupas**: pescoço, peito/tórax e comprimento do dorso.
 - **Peso**: histórico com gráfico e comparação com a faixa esperada da raça.
 - **Cio** (apenas fêmeas): início, fim e intervalo médio entre ciclos.
-- **Lembretes e notificações do sistema**, com resumo das doses atrasadas que ficaram sem marcação.
-- **Doses no calendário**: cada dose vira um evento com alarme num arquivo `.ics` — quem dispara é o próprio iPhone, então toca com o app fechado.
-- **Avisos com o app fechado (Web Push)**, opcionais, via um Worker na Cloudflare (veja `worker/`).
+- **Lembretes com o app fechado (Web Push)**, via um Worker na Cloudflare (veja `worker/`): a hora de cada dose de remédio, e as 9h do dia de cada vacina, vermífugo, antipulgas ou consulta — repetindo diariamente enquanto o cuidado seguir pendente.
+- **Doses no calendário**: cada dose vira um evento com alarme num arquivo `.ics` — quem dispara é o próprio iPhone, então toca com o app fechado, sem depender de servidor.
 - **Relatório para o veterinário** (PDF via impressão do navegador).
 - **Modo claro / escuro / automático**.
 - **Backup local (.json)** e **backup automático no Google Drive**.

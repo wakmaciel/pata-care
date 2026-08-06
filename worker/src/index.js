@@ -27,6 +27,25 @@ const MAX_SCHEDULE = 500;
 /** Janela de disparo: doses vencidas há menos disso ainda geram push. */
 const FIRE_WINDOW_MS = 10 * 60000;
 
+/* Chave-índice com o instante do próximo push, em ms.
+   Existe por causa da cota do KV: o plano gratuito dá 1.000 operações de `list`
+   por dia, e o cron de minuto em minuto são 1.440 execuções — varrer as
+   inscrições sempre estoura o limite todo santo dia, mesmo sem nenhuma dose
+   marcada. Lendo uma chave só, o custo de um minuto ocioso vira 1 `read`
+   (a cota é de 100 mil por dia) e a varredura acontece apenas quando há de fato
+   algo para disparar.
+
+   Três estados, e a diferença entre os dois últimos é o que evita um deploy
+   silenciosamente mudo:
+     "<ms>"   próximo push marcado para esse instante
+     "0"      varremos e não há nada agendado
+     ausente  índice ainda não montado (KV de antes desta versão, ou limpo na
+              mão) — vale uma varredura para construí-lo
+
+   Invariante: o índice pode apontar cedo demais — no pior caso o cron varre à
+   toa e se corrige —, mas nunca tarde demais, senão o push não sai. */
+const NEXT_KEY = "next";
+
 export default {
   async fetch(request, env) {
     const cors = corsHeaders(env);
@@ -78,6 +97,16 @@ async function handleSync(request, env) {
     JSON.stringify({ endpoint: sub.endpoint, schedule, updatedAt: now })
     // sem expirationTtl: a inscrição só some se o push service disser que morreu
   );
+
+  // Adianta o índice se esta agenda começa antes do que estava marcado. Se ela
+  // começar depois, não mexemos: quem conserta é a varredura, que recalcula o
+  // índice olhando todas as inscrições.
+  if (schedule.length > 0) {
+    const current = Number(await env.PUSH.get(NEXT_KEY));
+    if (!current || schedule[0] < current) {
+      await env.PUSH.put(NEXT_KEY, String(schedule[0]));
+    }
+  }
   return { ok: true, scheduled: schedule.length };
 }
 
@@ -92,7 +121,16 @@ async function handleUnsync(request, env) {
 
 async function fireDue(env) {
   const now = Date.now();
+
+  // Minuto ocioso: uma leitura e acabou. Sem isso, cada minuto do dia custaria
+  // um `list` e a cota diária do KV acabaria pela metade da tarde.
+  const stored = await env.PUSH.get(NEXT_KEY);
+  const next = stored === null ? null : Number(stored);
+  // Só a ausência (ou um valor corrompido) justifica varrer sem hora vencida.
+  if (next !== null && Number.isFinite(next) && (next === 0 || next > now)) return;
+
   const listed = await env.PUSH.list({ prefix: "sub:" });
+  let earliest = 0;
 
   for (const entry of listed.keys) {
     const rec = await env.PUSH.get(entry.name, "json");
@@ -115,7 +153,16 @@ async function fireDue(env) {
     if (remaining.length !== rec.schedule.length) {
       await env.PUSH.put(entry.name, JSON.stringify({ ...rec, schedule: remaining }));
     }
+    if (remaining.length > 0) {
+      const first = Math.min(...remaining);
+      if (!earliest || first < earliest) earliest = first;
+    }
   }
+
+  // Índice refeito a partir do que sobrou. Fica "0" quando não há dose nenhuma
+  // à frente — gravar o zero em vez de apagar a chave é o que faz o cron saber
+  // que não precisa varrer de novo.
+  await env.PUSH.put(NEXT_KEY, String(earliest));
 }
 
 /**

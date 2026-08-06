@@ -1,7 +1,7 @@
 # PataCare Push — Worker da Cloudflare
 
-Acorda o iPhone na hora da dose, **com o app fechado**. É a única coisa deste projeto que
-roda fora do aparelho.
+Acorda o iPhone na hora do lembrete, **com o app fechado** — dose de remédio, vacina, vermífugo,
+antipulgas, consulta. É a única coisa deste projeto que roda fora do aparelho.
 
 ## O que ele sabe (e o que não sabe)
 
@@ -11,9 +11,10 @@ O Worker guarda **só** a inscrição de push do aparelho e uma lista de instant
 { "endpoint": "https://web.push.apple.com/...", "schedule": [1786012200000, 1786041000000] }
 ```
 
-Nome do pet, nome do remédio, dose, nada disso sai do aparelho. O push é enviado **sem
-corpo** — o Worker só diz "acorde agora". Quem descobre de qual dose se trata e escreve o
-texto da notificação é o service worker do app (`public/sw.js`), lendo o IndexedDB local.
+Nome do pet, nome do remédio, tipo de vacina, nada disso sai do aparelho. O push é enviado **sem
+corpo** — o Worker só diz "acorde agora"; ele nem sabe se aquele instante era uma dose ou uma
+vacina vencida. Quem descobre o que estava marcado e escreve o texto da notificação é o service
+worker do app (`public/sw.js`), lendo o IndexedDB local.
 
 Efeito colateral prático: como não há corpo, não é preciso implementar a criptografia
 `aes128gcm` do Web Push. Basta assinar o cabeçalho VAPID, o que cabe em WebCrypto puro.
@@ -126,9 +127,11 @@ expõe a Push API) e ligue *Ajustes → Avisos com o app fechado*.
   a cada mudança nos remédios:
     POST /sync  ──────────────────▶ atualiza a agenda
 
-                 cron * * * * *   ▶ quais horários venceram?
-                                    assina JWT VAPID (ES256/WebCrypto)
-                                    POST endpoint, corpo vazio ───▶ ──▶ 📱
+                 cron * * * * *   ▶ KV["next"] já venceu?
+                                    não → acabou (1 leitura, nada mais)
+                                    sim → varre as inscrições
+                                          assina JWT VAPID (ES256/WebCrypto)
+                                          POST endpoint, corpo vazio ─▶ ──▶ 📱
 
   service worker recebe 'push'
     lê o IndexedDB, acha a dose
@@ -137,6 +140,10 @@ expõe a Push API) e ligue *Ajustes → Avisos com o app fechado*.
 
 Detalhes que importam:
 
+- **A chave `next` é um índice, não um dado.** Ela guarda só o instante do próximo push. O cron
+  a consulta antes de qualquer outra coisa e vai embora quando não há nada vencido — é o que
+  mantém o Worker dentro da cota do KV (veja *Custo*). Ela pode apontar cedo demais (no pior
+  caso o cron varre à toa e se corrige), mas nunca tarde demais.
 - **Janela de disparo de 10 minutos.** Se o Worker ficar fora do ar (ou o cron atrasar), uma
   dose vencida há mais de 10 min é descartada em vez de gerar um aviso fora de hora.
 - **A agenda se poda sozinha.** Todo horário `<= agora` sai do KV depois da varredura — sem
@@ -150,6 +157,27 @@ Detalhes que importam:
 
 Plano free da Cloudflare: 100 mil requisições/dia, Cron Triggers de 1 minuto e KV inclusos.
 O cron consome 1.440 execuções/dia. Para uso pessoal, **R$ 0**.
+
+O que aperta não são as requisições, é a **cota diária do KV** — e cada classe de operação tem
+a sua:
+
+| Operação | Cota/dia (free) |
+|---|---|
+| `read` | 100.000 |
+| `write` | 1.000 |
+| `delete` | 1.000 |
+| `list` | 1.000 |
+
+Com 1.440 execuções por dia, **qualquer coisa que o cron faça sempre** é multiplicada por 1.440.
+A primeira versão varria as inscrições em toda execução: 1.440 `list`/dia contra um teto de
+1.000 — a cota estourava todo santo dia, mesmo sem nenhuma dose marcada, e a Cloudflare mandava
+o e-mail de "operações de KV se aproximando do limite diário" no meio da tarde (a cota zera à
+meia-noite UTC).
+
+Por isso o índice `next`: um minuto ocioso agora custa **1 `read`** — 1.440/dia contra um teto
+de 100 mil, ou 1,4 % da cota. As varreduras (`list`) e as escritas só acontecem quando há
+mesmo uma dose vencendo. Do lado do app, `services/push.ts` também deixa de reenviar a agenda
+quando ela não mudou, para não gastar `write` a cada abertura.
 
 ## Manutenção
 

@@ -10,9 +10,12 @@ por que não há um terceiro.
 
 ---
 
-## 1. Por que o que temos hoje não basta
+## 1. Por que a primeira tentativa não bastava
 
-`src/services/notifications.ts` roda um `setTimeout` de 15 em 15 minutos dentro da página
+> Descrição do que o app fazia antes da v2.1. O canal descrito aqui foi removido; o raciocínio
+> fica porque é ele que justifica todo o resto do documento.
+
+`src/services/notifications.ts` rodava um `setTimeout` de 15 em 15 minutos dentro da página
 (`scheduleNotificationCheck`). Isso funciona **enquanto a aba/PWA está viva na frente**.
 
 - **App em segundo plano no iOS:** o WebKit congela o JavaScript da página poucos segundos
@@ -23,8 +26,8 @@ por que não há um terceiro.
   só para atender a um evento (`fetch`, `push`, `notificationclick`) e o mata em ~30 s de
   ociosidade. SW não tem timer próprio.
 
-Ou seja: hoje o app só consegue avisar **na hora em que você abre**, com o efeito de
-"notificação atrasada" que você já deve ter visto.
+Ou seja: por aquele caminho o app só conseguia avisar **na hora em que você abre**, com o efeito
+de "notificação atrasada" que você já deve ter visto.
 
 ## 2. APIs que parecem resolver e não resolvem
 
@@ -109,6 +112,12 @@ O que precisa ser feito:
 Custo: **R$ 0** no plano free da Cloudflare (100 mil requisições/dia, cron de 1 minuto,
 KV incluso). Precisa de uma conta Cloudflare e de um par de chaves VAPID.
 
+⚠️ Pegadinha que só aparece depois de publicar: o cron de 1 minuto são 1.440 execuções por dia,
+e o KV do plano free só dá **1.000 operações de `list` por dia**. Varrer as inscrições em toda
+execução estoura a cota diariamente, mesmo sem nenhuma dose marcada. O Worker guarda uma chave
+`next` com o instante do próximo push, e o minuto ocioso passa a custar uma leitura (cota de
+100 mil). Detalhes em [`worker/README.md`](../worker/README.md#custo).
+
 Limitações honestas:
 - Só funciona se o app estiver **instalado na Tela de Início**. Em aba do Safari, não.
 - Se o usuário desinstalar/reinstalar, a inscrição muda e precisa ser refeita.
@@ -129,27 +138,70 @@ com Cloud Scheduler) plano pago. Para um app de um pet, é matar mosquito com ca
 
 ## 4. O que ficou no app
 
-As duas coisas convivem, e é bom que convivam — uma não depende de rede, a outra é mais
-precisa:
+Sobraram dois caminhos, e os dois avisam com o app fechado:
 
-| Caminho | Onde | Depende de |
-|---|---|---|
-| Alarme do Calendário (.ics) | `src/services/calendar.ts` | nada |
-| Web Push | `src/services/push.ts` + `worker/` | Worker publicado + app na Tela de Início |
-| Aviso ao abrir o app | `src/services/notifications.ts` | app em primeiro plano |
+| Caminho | Onde | Depende de | Avisa sobre |
+|---|---|---|---|
+| Web Push | `src/services/push.ts` + `public/sw.js` + `worker/` | Worker publicado + app na Tela de Início | **tudo**: doses de remédio, vacinas, vermífugos, antipulgas e consultas |
+| Alarme do Calendário (.ics) | `src/services/calendar.ts` | nada | o que o tutor escolher exportar |
 
-## 5. Doses atrasadas que passavam batido
+### Por que o aviso "ao abrir o app" foi embora
 
-`runNotificationCheck` só avisava de uma dose na janela de `15 min antes` até `24 h depois`.
-Se o app ficasse dois dias sem ser aberto, as doses daquele intervalo **nunca** geravam aviso
-nenhum — nem ao reabrir.
+Existia um terceiro caminho em `src/services/notifications.ts`: um `setTimeout` de 15 em 15
+minutos que varria os registros e notificava. Ele saiu na v2.1, por dois motivos.
 
-Agora as doses que passaram dessa janela entram num resumo diário único:
+O primeiro é que ele **repetia o push**. O Worker cutucava o aparelho na hora da dose e, ao
+reabrir o PataCare, o `runNotificationCheck` anunciava a mesma dose de novo — cada canal tem
+seu próprio registro de "já avisei", e o service worker nem consegue escrever no `localStorage`
+do app para combinar com ele.
 
-> **Doses atrasadas** — 5 doses sem marcação: Amoxicilina (Mel), Dipirona (Mel).
+O segundo é mais de fundo: como está explicado na seção 1, o iOS congela o JavaScript da página
+poucos segundos depois de você sair do app. Um canal que só roda em primeiro plano nunca avisa
+*na hora* — ele avisa quando você abre, que é justamente quando você já ia ver a tela de
+Lembretes de qualquer jeito.
 
-Um por dia enquanto houver pendência, e ele some sozinho quando as doses forem marcadas como
-aplicadas ou não aplicadas. O aviso pontual de cada dose continua igual.
+### Como os cuidados entraram no push
+
+Dose de remédio tem hora marcada (`scheduledAt`), então o horário do push é direto. Vacina,
+vermífugo, antipulgas e consulta têm só `nextDate` — uma data, sem hora. A convenção adotada:
+
+- **9h do dia marcado**, e **9h de todo dia seguinte** enquanto o cuidado seguir pendente. É o
+  que substitui o antigo resumo diário de atrasados.
+- A agenda é montada **por dia, não por registro**: `careWakeups` acha o vencimento mais próximo
+  e marca as 9h de cada dia dali em diante, até 30 dias à frente. Um toque por dia serve para
+  quantos cuidados estiverem vencidos.
+- Quem decide o **texto** — e se ainda há algo a dizer — é o `public/sw.js`, na hora do push,
+  lendo o IndexedDB. O servidor continua sem saber o nome de nada.
+
+O preço disso é uma **duplicação consciente**: o `sw.js` precisa de uma cópia em JavaScript puro
+do `careRecordsFor` (só o registro mais recente de cada grupo conta; vacinas desligadas no
+perfil do pet ficam de fora), porque um service worker não importa o código do app. Essa cópia
+tem que andar junto com o original em `src/domain/care.ts`.
+
+## 5. O que o tutor vê
+
+O `sw.js` monta o texto na hora, a partir do banco local. Se há uma dose de remédio na janela de
+30 minutos em torno do push, é ela que fala — é o aviso mais pontual:
+
+> **Hora do remédio de Mel** — Amoxicilina — 1 comprimido
+
+Fora disso, o push das 9h vira um resumo dos cuidados vencidos ou vencendo hoje:
+
+> **Cuidados atrasados** — 2 vacinas (Mel), Vermífugo (Mel).
+
+O resumo conta por categoria em vez de listar nome por nome: dizer "V8" e "Antirrábica" exigiria
+copiar para o service worker o mapa de protocolos de `src/domain/vaccines.ts`, que muda com
+frequência. Contar evita a cópia sem esconder o segundo item.
+
+Quando o cuidado é registrado, a gravação no banco já dispara um `syncPushSchedule` (veja
+`src/main.tsx`), e os toques das 9h saem da agenda no mesmo instante — o tutor não continua sendo
+acordado por algo que já resolveu.
+
+Sobra uma fresta: se o dado mudar em **outro aparelho**, ou se a sincronização falhar por falta
+de rede, o push das 9h chega e o `sw.js` não acha nada vencido. Como o iOS **exige** que todo
+push vire notificação visível — quem recebe e fica calado perde a inscrição —, nesse caso sai o
+texto genérico ("Toque para conferir os cuidados do seu pet"). A agenda se corrige na próxima
+abertura do app.
 
 ---
 

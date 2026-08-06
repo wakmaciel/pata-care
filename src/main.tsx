@@ -5,7 +5,6 @@ import { setDbChangeListener } from "@/db";
 import { useDataStore } from "@/store/data";
 import { initTheme } from "@/store/theme";
 import { scheduleDriveBackupAfterChange, driveAutoBackupOnOpen } from "@/services/drive";
-import { scheduleNotificationCheck } from "@/services/notifications";
 import { schedulePushSync, syncPushSchedule } from "@/services/push";
 import { registerServiceWorker } from "@/pwa";
 import "@/index.css";
@@ -45,10 +44,6 @@ useDataStore
   .reload()
   .then(() => {
     registerServiceWorker();
-    scheduleNotificationCheck();
-    document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible") scheduleNotificationCheck();
-    });
     driveAutoBackupOnOpen();
     // Reafirma a agenda a cada abertura: cobre doses marcadas em outro aparelho
     // e inscrições que o iOS renovou por conta própria.
